@@ -1,0 +1,67 @@
+{
+  "$schema": "https://puremourning.github.io/vimspector/schema/vimspector.schema.json",
+  "configurations": {
+    "run": {
+      "adapter": "debugpy",
+      "breakpoints": {
+        "exception": {
+          "caught": "N",
+          "raised": "N",
+          "uncaught": "Y",
+          "userUnhandled": "N"
+        }
+      },
+      "configuration": {
+        "cwd": "${workspaceRoot}",
+        "name": "run this Python file",
+        "program": "${file}",
+        "python": "${workspaceRoot}/venv/Scripts/python.exe",
+        "request": "launch",
+        "stopOnEntry": false,
+        "type": "python"
+      }
+    },
+    "run - main.py": {
+      "adapter": "debugpy",
+      "breakpoints": {
+        "exception": {
+          "caught": "N",
+          "raised": "N",
+          "uncaught": "Y",
+          "userUnhandled": "N"
+        }
+      },
+      "configuration": {
+        "cwd": "${workspaceRoot}",
+        "name": "run main.py",
+        "program": "${workspaceRoot}/src/svg_path_data/main.py",
+        "python": "${workspaceRoot}/venv/Scripts/python.exe",
+        "request": "launch",
+        "stopOnEntry": false,
+        "type": "python"
+      }
+    },
+    "test": {
+      "adapter": "debugpy",
+      "breakpoints": {
+        "exception": {
+          "caught": "N",
+          "raised": "N",
+          "uncaught": "Y",
+          "userUnhandled": "N"
+        }
+      },
+      "configuration": {
+        "args": [
+          "-q",
+          "${file}"
+        ],
+        "module": "pytest",
+        "name": "run this test file",
+        "python": "${workspaceRoot}/venv/Scripts/python.exe",
+        "request": "launch",
+        "type": "python"
+      }
+    }
+  }
+}
