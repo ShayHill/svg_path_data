@@ -89,6 +89,36 @@ class TestNonAdjacentCurveShorthand:
         assert_svgd_equal(cmds.abs_svgd, "M1 2S3 4 3 4Z")
 
 
+class TestCloseCurve:
+    """Explicitly close with z when a curve closes a path."""
+    def test_end_with_curve(self):
+        cpts = (
+            ((0.5, 0.5), (1.0, 0.0), (2.0, 0.0), (2.5, 0.5)),
+            ((2.5, 0.5), (3.0, 1.0), (3.0, 2.0), (2.5, 2.5)),
+            ((2.5, 2.5), (2.0, 3.0), (1.0, 3.0), (0.5, 2.5)),
+            ((0.5, 2.5), (0.0, 2.0), (0.0, 1.0), (0.5, 0.5)),
+        )
+        svgd = get_svgd_from_cpts(cpts)
+        assert svgd == 'M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 2.5 0 1 .5 .5Z'
+
+    def test_mid_curve(self):
+        """Explicitly close anywhere a curve ends at the the start of a path."""
+        cpts = (
+            ((0.5, 0.5), (1.0, 0.0), (2.0, 0.0), (2.5, 0.5)),
+            ((2.5, 0.5), (3.0, 1.0), (3.0, 2.0), (2.5, 2.5)),
+            ((2.5, 2.5), (2.0, 3.0), (1.0, 3.0), (0.5, 0.5)),
+            ((0.5, 0.5), (1.0, 0.0), (2.0, 0.0), (2.5, 0.5)),
+        )
+        svgd = get_svgd_from_cpts(cpts)
+        assert svgd == "M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 .5ZC1 0 2 0 2.5 .5"
+
+# def test_consecutive_l_at_start():
+#     """Test that consecutive L commands at the start of a path added to m."""
+#     svgd = "M0 0L1 1L2 2"
+#     cmds = PathCommands.from_svgd(svgd)
+#     assert cmds.abs_svgd == "M0 0L2 2"
+
+
 class TestResolution:
     """Test that resolution is used in _are_float_strings_equal."""
 

@@ -258,8 +258,6 @@ class PathCommand:
         This is used to determine when a command closes a path so an explicit "Z"
         command and can be guaranteed.
         """
-        if self.prev is None:
-            return 0.0, 0.0
         if self.cmd in "mM":
             x, y = self.abs_vals[:2]
             return x, y
@@ -289,7 +287,7 @@ class PathCommand:
         return self.prev.abs_vals[-2], self.prev.abs_vals[-1]
 
     @property
-    def extended_current_point(self) -> Iterator[float]:
+    def _extended_current_point(self) -> Iterator[float]:
         """Extend the current point over all values in the command.
 
         :return: a tuple of the x and y coordinates of the last point in the previous
@@ -343,7 +341,7 @@ class PathCommand:
         """
         if len(self._abs_vals) == self._n:
             return self._abs_vals
-        curr = self.extended_current_point
+        curr = self._extended_current_point
 
         def iter_abs_vals() -> Iterator[float]:
             """Iterate over the absolute values of the points."""
@@ -367,7 +365,7 @@ class PathCommand:
         """
         if len(self._rel_vals) == self._n:
             return self._rel_vals
-        curr = self.extended_current_point
+        curr = self._extended_current_point
 
         def iter_rel_vals() -> Iterator[float]:
             """Iterate over the relative values of the points."""
@@ -429,6 +427,7 @@ class PathCommand:
             yield self._format_number(vals[0])
         elif self.str_cmd in "TS":
             yield from map(self._format_number, vals[2:])
+        # TODO: simplify arc return. No special case should be needed.
         elif self.cmd == "A":
             yield from map(self._format_number, self.abs_vals[:5])
             yield from map(self._format_number, vals[5:])
