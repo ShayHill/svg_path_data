@@ -46,7 +46,7 @@ log_cli = 1
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py{39,310,311}
+envlist = py{39,310,311,312,313}
 
 [testenv]
 deps = pytest
