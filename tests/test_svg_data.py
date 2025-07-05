@@ -112,11 +112,11 @@ class TestCloseCurve:
         svgd = get_svgd_from_cpts(cpts)
         assert svgd == "M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 .5ZC1 0 2 0 2.5 .5"
 
-# def test_consecutive_l_at_start():
-#     """Test that consecutive L commands at the start of a path added to m."""
-#     svgd = "M0 0L1 1L2 2"
-#     cmds = PathCommands.from_svgd(svgd)
-#     assert cmds.abs_svgd == "M0 0L2 2"
+def test_consecutive_l_at_start():
+    """Test that consecutive L commands at the start of a path added to m."""
+    svgd = "M0 0L1 1L2 2"
+    cmds = PathCommands.from_svgd(svgd)
+    assert_svgd_equal(cmds.abs_svgd, "M0 0 1 1 2 2")
 
 
 class TestResolution:
@@ -129,13 +129,13 @@ class TestResolution:
             [(3 / 3, 4 / 3 + 1 / 1000), (5 / 3, 4 / 3 + 2 / 10000)],
         ]
         assert_svgd_equal(
-            get_svgd_from_cpts(cpts, resolution=2), "M.33 .67L1 1.33H1.67"
+            get_svgd_from_cpts(cpts, resolution=2), "M.33 .67 1 1.33H1.67"
         )
 
     def test_resolution_from_svgd(self):
         svgd = "M.333333 .67L1 1.33H1.67"
         cmds = PathCommands.from_svgd(svgd, resolution=2)
-        assert_svgd_equal(cmds.abs_svgd, "M.33 .67L1 1.33H1.67")
+        assert_svgd_equal(cmds.abs_svgd, "M.33 .67 1 1.33H1.67")
 
 
 class TestBreakCommand:

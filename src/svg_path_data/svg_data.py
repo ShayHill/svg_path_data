@@ -525,8 +525,13 @@ class PathCommands:
         """
         bits: list[str] = []
         for cmd in self:
-            if cmd.prev is None or cmd.str_cmd != cmd.prev.str_cmd:
+            if cmd.prev is None:
                 bits.append(cmd.str_cmd)
+            else:
+                cmd_prev = cmd.prev.str_cmd
+                cmd_prev = {"M": "L", "m": "l"}.get(cmd_prev, cmd_prev)
+                if cmd_prev != cmd.str_cmd:
+                    bits.append(cmd.str_cmd)
             bits.extend(cmd.iter_str_pts(RelativeOrAbsolute.ABSOLUTE))
         return _svgd_join(*bits)
 
@@ -538,8 +543,13 @@ class PathCommands:
         """
         bits: list[str] = []
         for cmd in self:
-            if cmd.prev is None or cmd.str_cmd != cmd.prev.str_cmd:
+            if cmd.prev is None:
                 bits.append(cmd.str_cmd.lower())
+            else:
+                cmd_prev = cmd.prev.str_cmd
+                cmd_prev = {"M": "L", "m": "l"}.get(cmd_prev, cmd_prev)
+                if cmd_prev != cmd.str_cmd:
+                    bits.append(cmd.str_cmd.lower())
             bits.extend(cmd.iter_str_pts(RelativeOrAbsolute.RELATIVE))
         return _svgd_join(*bits)
 
