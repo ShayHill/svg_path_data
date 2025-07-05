@@ -427,10 +427,6 @@ class PathCommand:
             yield self._format_number(vals[0])
         elif self.str_cmd in "TS":
             yield from map(self._format_number, vals[2:])
-        # TODO: simplify arc return. No special case should be needed.
-        elif self.cmd == "A":
-            yield from map(self._format_number, self.abs_vals[:5])
-            yield from map(self._format_number, vals[5:])
         else:
             yield from map(self._format_number, vals)
 
