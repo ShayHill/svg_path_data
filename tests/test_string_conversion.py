@@ -3,6 +3,7 @@
 :author: Shay Hill
 :created: 2023-09-23
 """
+
 # pyright: reportPrivateUsage=false
 
 import itertools as it
@@ -44,17 +45,29 @@ def high_numbers() -> Iterator[float]:
         yield random.uniform(1e24, 1e25)
 
 
+def one_significant_digit() -> Iterator[float]:
+    """Yield random float values with one significant digit."""
+    for _ in range(_FLOAT_ITERATIONS):
+        yield float("0" * random.randint(1, 10) + str(random.randint(1, 9)))
+
+
 def random_ints() -> Iterator[int]:
     """Yield random integer values."""
     big_int = 2**63 - 1
     for _ in range(_FLOAT_ITERATIONS):
         yield random.randint(-big_int, big_int)
-    yield from range(-9, 10)  # Include small integers for testing
+    yield from range(-15, 16)  # Include small integers for testing
 
 
 def random_numbers() -> Iterator[float]:
     """Yield random numbers values."""
-    return it.chain(random_floats(), low_numbers(), high_numbers(), random_ints())
+    yield from it.chain(
+        random_floats(),
+        low_numbers(),
+        high_numbers(),
+        one_significant_digit(),
+        random_ints(),
+    )
 
 
 class TestSplitFloatStr:
@@ -117,8 +130,11 @@ class TestFormatNumber:
         exponential = mod.format_as_exponential(num)
         # Result is exactly one digit
         if "." not in exponential:
-            assert exponential.lstrip("-").isdigit()
+            pos = exponential.lstrip("-")
+            # result in 0-9 or formatted like 1e-3
+            assert pos.isdigit() or pos.split("e")[0].isdigit()
         else:
+            # no 0.n or .n in exponential notation
             integer = exponential.split(".")[0].lstrip("-")
             assert not integer or integer in "123456789"
 
