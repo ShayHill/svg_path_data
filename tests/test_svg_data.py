@@ -17,10 +17,11 @@ from svg_path_data.svg_data import (
     _are_float_strings_equal,
     _svgd_join,
     _svgd_split,
+    format_svgd_absolute,
+    format_svgd_relative,
+    format_svgd_shortest,
     get_cpts_from_svgd,
     get_svgd_from_cpts,
-    make_absolute,
-    make_relative,
 )
 
 _T = TypeVar("_T")
@@ -33,10 +34,22 @@ def assert_svgd_equal(result: str, expect: str):
     """
     assert result == expect
     assert _svgd_join(*_svgd_split(expect)) == expect
-    assert get_svgd_from_cpts(get_cpts_from_svgd(expect)) == make_absolute(expect)
+    assert get_svgd_from_cpts(get_cpts_from_svgd(expect)) == format_svgd_absolute(
+        expect
+    )
     cpts = get_cpts_from_svgd(expect)
-    assert cpts == get_cpts_from_svgd(make_relative(expect))
-    assert make_relative(make_absolute(expect)) == make_relative(expect)
+    assert cpts == get_cpts_from_svgd(format_svgd_relative(expect))
+    assert format_svgd_relative(format_svgd_absolute(expect)) == format_svgd_relative(
+        expect
+    )
+
+    shortest = format_svgd_shortest(expect)
+    relative = format_svgd_relative(expect)
+    absolute = format_svgd_absolute(expect)
+    assert shortest == format_svgd_shortest(relative)
+    assert shortest == format_svgd_shortest(absolute)
+    assert len(shortest) <= len(relative)
+    assert len(shortest) <= len(absolute)
 
 
 class TestCptsWithMidClose:
@@ -52,7 +65,7 @@ class TestCptsWithMidClose:
             [(5, 9), (6, 9), (3, 9)],  # Close the path
         ]
         expect = "m0 0q1 0 2 0t2 0-4 0zm0 5q1 0 2 0t2 0m-1 4q1 0 2 0t-2 0z"
-        result = make_relative(get_svgd_from_cpts(cpts))
+        result = format_svgd_relative(get_svgd_from_cpts(cpts))
         assert_svgd_equal(result, expect)
 
 
@@ -91,6 +104,7 @@ class TestNonAdjacentCurveShorthand:
 
 class TestCloseCurve:
     """Explicitly close with z when a curve closes a path."""
+
     def test_end_with_curve(self):
         cpts = (
             ((0.5, 0.5), (1.0, 0.0), (2.0, 0.0), (2.5, 0.5)),
@@ -99,7 +113,7 @@ class TestCloseCurve:
             ((0.5, 2.5), (0.0, 2.0), (0.0, 1.0), (0.5, 0.5)),
         )
         svgd = get_svgd_from_cpts(cpts)
-        assert svgd == 'M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 2.5 0 1 .5 .5Z'
+        assert svgd == "M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 2.5 0 1 .5 .5Z"
 
     def test_mid_curve(self):
         """Explicitly close anywhere a curve ends at the the start of a path."""
@@ -111,6 +125,7 @@ class TestCloseCurve:
         )
         svgd = get_svgd_from_cpts(cpts)
         assert svgd == "M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 .5ZC1 0 2 0 2.5 .5"
+
 
 def test_consecutive_l_at_start():
     """Test that consecutive L commands at the start of a path added to m."""
@@ -193,6 +208,13 @@ def test_close():
     assert cpts == [[(0.0, 0.0), (1.0, 1.0)], [(1.0, 1.0), (0.0, 0.0)]]
 
 
+def test_shortest_mixes_rel_and_abs():
+    """Test with a shortest path that mixes relative and absolute commands."""
+    svgd = "M0 0 L1111 1111L1110 1111L0 1"
+    cmds = PathCommands.from_svgd(svgd)
+    assert cmds.svgd == "M0 0 1111 1111h-1L0 1"
+
+
 potrace_output = par(
     """M338 236 c-5 -3 -6 -6 -3 -6 1 -1 2 -2 2 -3 0 -2 1 -2 2 -2 2 0 3 0 4 -1 2 -2 2
     -2 4 -1 1 2 2 2 3 1 2 -3 6 0 6 6 1 8 -4 9 -11 3 l-3 -3 0 4 c0 3 -1 4 -4 2z M170
@@ -248,6 +270,6 @@ class TestCloseWithAxis:
 class TestPotraceOutput:
     def test_cycle(self) -> None:
         iterations: list[str] = []
-        iterations.append(make_relative(potrace_output))
-        iterations.append(make_relative(iterations[-1]))
+        iterations.append(format_svgd_relative(potrace_output))
+        iterations.append(format_svgd_relative(iterations[-1]))
         assert iterations[0] == iterations[1]

@@ -19,11 +19,14 @@ The functions you may need:
 `get_cpts_from_svgd(svgd: str) -> list[list[tuple[float, float]]`
     - Convert an SVG path data string to a list of lists of Bezier control points.
 
-`make_relative(svgd: str) -> str`
-    - Convert an absolute SVG path data string to a relative one.
+`format_svge_absolute(svgd: str) -> str`
+    - Convert an SVG path data string to a relative one.
 
-`make_absolute(svgd: str) -> str`
-    - Convert a relative SVG path data string to an absolute one.
+`format_svgd_relative(svgd: str) -> str`
+    - Convert an SVG path data string to an absolute one.
+
+`format_svgd_shortest(svgd: str) -> str`
+    - Convert an SVG path data string to the shortest form.
 
 :author: Shay Hill
 :created: 2025-06-18
@@ -36,7 +39,7 @@ import functools as ft
 import itertools as it
 import re
 from string import ascii_lowercase
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Literal, TypeVar
 
 from svg_path_data.float_string_conversion import format_number
 
@@ -50,10 +53,11 @@ _N_LINEAR = 4
 
 
 class RelativeOrAbsolute(str, enum.Enum):
-    """Enum to indicate whether a path is relative or absolute."""
+    """Enum to indicate whether a path is relative or absolute or a combination."""
 
     RELATIVE = "relative"
     ABSOLUTE = "absolute"
+    SHORTEST = "shortest"
 
 
 def _chunk_pairs(items: Sequence[_T]) -> Iterator[tuple[_T, _T]]:
@@ -261,6 +265,9 @@ class PathCommand:
         if self.cmd in "mM":
             x, y = self.abs_vals[:2]
             return x, y
+        if self.prev is None:
+            msg = "Invalid path command. Starts with a non-move command."
+            raise ValueError(msg)
         return self.prev.path_open
 
     @property
@@ -404,7 +411,12 @@ class PathCommand:
         vals = [*self.current_point, *self.abs_vals]
         return list(_chunk_pairs(vals))
 
-    def iter_str_pts(self, relative_or_absolute: RelativeOrAbsolute) -> Iterator[str]:
+    def iter_str_pts(
+        self,
+        relative_or_absolute: Literal[
+            RelativeOrAbsolute.RELATIVE, RelativeOrAbsolute.ABSOLUTE
+        ],
+    ) -> Iterator[str]:
         """Iterate over the points in this command as strings.
 
         :param relative_or_absolute: whether to return relative or absolute coordinates
@@ -418,6 +430,7 @@ class PathCommand:
         else:
             msg = f"Unknown relative_or_absolute value: {relative_or_absolute}"
             raise ValueError(msg)
+
         if self.str_cmd == "Z":
             return
 
@@ -430,9 +443,31 @@ class PathCommand:
         else:
             yield from map(self._format_number, vals)
 
-        if self.does_close:
-            # path was closed with an arc or curve.
+        if self.does_close:  # path was closed with an arc or curve.
             yield "Z" if relative_or_absolute == RelativeOrAbsolute.ABSOLUTE else "z"
+
+    def get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
+        """Get the SVG command and points as a string.
+
+        :param relative_or_absolute: whether to return relative or absolute coordinates
+        :return: the SVG command and points as a string
+        """
+        if relative_or_absolute == RelativeOrAbsolute.RELATIVE:
+            return _svgd_join(
+                self.str_cmd.lower(), *self.iter_str_pts(relative_or_absolute)
+            )
+        if relative_or_absolute == RelativeOrAbsolute.ABSOLUTE:
+            return _svgd_join(self.str_cmd, *self.iter_str_pts(relative_or_absolute))
+        if relative_or_absolute == RelativeOrAbsolute.SHORTEST:
+            relative = _svgd_join(
+                self.str_cmd.lower(), *self.iter_str_pts(RelativeOrAbsolute.RELATIVE)
+            )
+            absolute = _svgd_join(
+                self.str_cmd, *self.iter_str_pts(RelativeOrAbsolute.ABSOLUTE)
+            )
+        if len(relative) < len(absolute):
+            return relative
+        return absolute
 
 
 class PathCommands:
@@ -513,41 +548,47 @@ class PathCommands:
             node = node.prev
         return PathCommands(node)
 
+    def _get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
+        """Get the SVG path data string for the commands in the linked list.
+
+        :param relative_or_absolute: whether to return relative or absolute coordinates
+        :return: an SVG path data string
+        """
+        bits: list[str] = []
+        cmd_prev: str | None = None
+        for cmd in self:
+            cmd_svgd = cmd.get_svgd(relative_or_absolute)
+            cmd_str, cmd_pts = cmd_svgd[0], cmd_svgd[1:]
+            if cmd_str == cmd_prev:
+                bits.append(cmd_pts)
+            else:
+                bits.append(cmd_svgd)
+            cmd_prev = {"M": "L", "m": "l"}.get(cmd_str, cmd_str)
+        return _svgd_join(*bits)
+
+    @property
+    def svgd(self) -> str:
+        """Get the SVG path data string for the commands in the linked list.
+
+        :return: an SVG path data string
+        """
+        return self._get_svgd(RelativeOrAbsolute.SHORTEST)
+
     @property
     def abs_svgd(self) -> str:
-        """Get the SVG path data string for the commands in the linked list.
+        """Get the absolute SVG path data string for the commands in the linked list.
 
         :return: an ABSOLUTE SVG path data string
         """
-        bits: list[str] = []
-        for cmd in self:
-            if cmd.prev is None:
-                bits.append(cmd.str_cmd)
-            else:
-                cmd_prev = cmd.prev.str_cmd
-                cmd_prev = {"M": "L", "m": "l"}.get(cmd_prev, cmd_prev)
-                if cmd_prev != cmd.str_cmd:
-                    bits.append(cmd.str_cmd)
-            bits.extend(cmd.iter_str_pts(RelativeOrAbsolute.ABSOLUTE))
-        return _svgd_join(*bits)
+        return self._get_svgd(RelativeOrAbsolute.ABSOLUTE)
 
     @property
     def rel_svgd(self) -> str:
-        """Get the SVG path data string for the commands.
+        """Get the relative SVG path data string for the commands in the linked list.
 
         :return: a RELATIVE SVG path data string
         """
-        bits: list[str] = []
-        for cmd in self:
-            if cmd.prev is None:
-                bits.append(cmd.str_cmd.lower())
-            else:
-                cmd_prev = cmd.prev.str_cmd
-                cmd_prev = {"M": "L", "m": "l"}.get(cmd_prev, cmd_prev)
-                if cmd_prev != cmd.str_cmd:
-                    bits.append(cmd.str_cmd.lower())
-            bits.extend(cmd.iter_str_pts(RelativeOrAbsolute.RELATIVE))
-        return _svgd_join(*bits)
+        return self._get_svgd(RelativeOrAbsolute.RELATIVE)
 
     @property
     def cpts(self) -> list[list[tuple[float, float]]]:
@@ -560,7 +601,7 @@ class PathCommands:
         return [x for x in per_cmd if x]
 
 
-def make_relative(svgd: str, resolution: int | None = None) -> str:
+def format_svgd_relative(svgd: str, resolution: int | None = None) -> str:
     """Convert an absolute SVG path data string to a relative one.
 
     :param svgd: an ABSOLUTE SVG path data string
@@ -569,13 +610,22 @@ def make_relative(svgd: str, resolution: int | None = None) -> str:
     return PathCommands.from_svgd(svgd, resolution=resolution).rel_svgd
 
 
-def make_absolute(svgd: str, resolution: int | None = None) -> str:
+def format_svgd_absolute(svgd: str, resolution: int | None = None) -> str:
     """Convert a relative SVG path data string to an absolute one.
 
     :param svgd: a RELATIVE SVG path data stming
     :return: an ABSOLUTE SVG path data string
     """
     return PathCommands.from_svgd(svgd, resolution=resolution).abs_svgd
+
+
+def format_svgd_shortest(svgd: str, resolution: int | None = None) -> str:
+    """Convert an SVG path data string to the shortest form.
+
+    :param svgd: an SVG path data string
+    :return: a shortest SVG path data string
+    """
+    return PathCommands.from_svgd(svgd, resolution=resolution).svgd
 
 
 def get_cpts_from_svgd(
