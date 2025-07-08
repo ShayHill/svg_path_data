@@ -35,7 +35,6 @@ The functions you may need:
 from __future__ import annotations
 
 import enum
-import functools as ft
 import itertools as it
 import re
 from string import ascii_lowercase
@@ -122,20 +121,19 @@ def _svgd_join(*parts: str) -> str:
     return re.sub(r"\s*([A-Za-z])\s*", r"\1", joined)
 
 
-def _get_shorthand_command(cmd: PathCommand, resolution: int | None) -> str:
+def _get_shorthand_command(cmd: PathCommand) -> str:
     """If a path command can be shortened, return the shorthand SVG command.
 
     :param cmd: the command to check
     :return: the input cmd.cmd or a shorthand replacement ("H", "V", "T", "S", "Z")
     """
-    nos_eq = ft.partial(_are_float_strings_equal, resolution=resolution)
-    if cmd.cmd in "QC" and nos_eq(*cmd.abs_vals[:2], *cmd.implied_cpt):
+    if cmd.cmd in "QC" and tuple(cmd.abs_strs[:2]) == cmd.implied_cpt_str:
         return "T" if cmd.cmd == "Q" else "S"
     if cmd.cmd == "L":
         if cmd.does_close:
             return "Z"
-        eq_x = nos_eq(cmd.abs_vals[0], cmd.current_point[0])
-        eq_y = nos_eq(cmd.abs_vals[1], cmd.current_point[1])
+        eq_x = cmd.abs_strs[0] == cmd.current_point_str[0]
+        eq_y = cmd.abs_strs[1] == cmd.current_point_str[1]
         if eq_x:
             return "V"
         if eq_y:
@@ -162,7 +160,7 @@ def _take_n_floats(parts: list[str], n: int) -> Iterable[float]:
     :param n: the number of floats to pop
     :return: a tuple of the remaining parts and the popped floats
     """
-    return map(float, (parts.pop(0) for _ in range(n)))
+    return map(float, (parts.pop() for _ in range(n)))
 
 
 class PathCommand:
@@ -187,7 +185,6 @@ class PathCommand:
         :param prev: the previous command in the linked list
         """
         self.prev = prev
-        self._resolution = resolution
 
         self._rel_vals: list[float] = []
         self._abs_vals: list[float] = []
@@ -198,6 +195,9 @@ class PathCommand:
         else:
             self.abs_vals = list(vals)
             self.cmd = cmd or _N_2_CMD[self._n]
+
+        self._abs_strs: list[str] = []
+        self._rel_strs: list[str] = []
 
         # expand shorthand
         if self.cmd in "TS":
@@ -210,9 +210,14 @@ class PathCommand:
             self.rel_vals = [*self.rel_vals, 0.0]
             self.cmd = "L"
 
+        self.path_open = self._get_path_open()
         self.next: PathCommand | None = None
+        self.resolution = resolution
         if self.prev is not None:
             self.prev.next = self
+            self.resolution = self.resolution or self.prev.resolution
+        po_x, po_y = map(self._format_number, self.path_open)
+        self.path_open_str = (po_x, po_y)
 
     def __repr__(self) -> str:
         """Get the SVG command and points for this command.
@@ -220,13 +225,6 @@ class PathCommand:
         :return: the SVG command and points as a string
         """
         return f"Command('{self.cmd}', {self.abs_vals})"
-
-    @property
-    def resolution(self) -> int | None:
-        """Get the float resolution for this command."""
-        if self.prev is None:
-            return self._resolution
-        return self._resolution or self.prev.resolution
 
     def _format_number(self, number: float | str) -> str:
         """Format a number to a string with the correct precision.
@@ -253,8 +251,7 @@ class PathCommand:
         """
         return max(len(self._abs_vals), len(self._rel_vals))
 
-    @property
-    def path_open(self) -> tuple[float, float]:
+    def _get_path_open(self) -> tuple[float, float]:
         """Get the x and y coordinates of the last movement command.
 
         :return: a tuple of the x and y coordinates of the first point
@@ -278,7 +275,7 @@ class PathCommand:
         """
         if self.cmd == "M":
             return False
-        return self.nos_eq(*self.abs_vals[-2:], *self.path_open)
+        return tuple(self.abs_strs[-2:]) == self.path_open_str
 
     @property
     def current_point(self) -> tuple[float, float]:
@@ -292,6 +289,17 @@ class PathCommand:
         if self.prev is None:
             return 0.0, 0.0
         return self.prev.abs_vals[-2], self.prev.abs_vals[-1]
+
+    @property
+    def current_point_str(self) -> tuple[str, str]:
+        """Get the current point as a tuple of formatted float strings.
+
+        :return: a tuple of the x and y coordinates of the last point in the previous
+            command as strings
+        """
+        if self.prev is None:
+            return "0", "0"
+        return self.prev.abs_strs[-2], self.prev.abs_strs[-1]
 
     @property
     def _extended_current_point(self) -> Iterator[float]:
@@ -341,12 +349,21 @@ class PathCommand:
         raise ValueError(msg)
 
     @property
+    def implied_cpt_str(self) -> tuple[str, str]:
+        """Get the implied control point as a string.
+
+        :return: the implied control point as a string
+        """
+        x, y = map(self._format_number, self.implied_cpt)
+        return x, y
+
+    @property
     def abs_vals(self) -> list[float]:
         """Get the absolute values of the points.
 
         :return: the absolutr values of the points
         """
-        if len(self._abs_vals) == self._n:
+        if self._abs_vals:
             return self._abs_vals
         curr = self._extended_current_point
 
@@ -363,6 +380,17 @@ class PathCommand:
         """Set the absolute values of the points."""
         self._abs_vals = vals
         self._rel_vals = []
+        self._rel_strs = []
+
+    @property
+    def abs_strs(self) -> list[str]:
+        """Get the relative values of the points as strings.
+
+        :return: the relative values of the points as strings
+        """
+        if not self._abs_strs:
+            self._abs_strs = [self._format_number(x) for x in self.abs_vals]
+        return self._abs_strs
 
     @property
     def rel_vals(self) -> list[float]:
@@ -370,7 +398,7 @@ class PathCommand:
 
         :return: the relative values of the points
         """
-        if len(self._rel_vals) == self._n:
+        if self._rel_vals:
             return self._rel_vals
         curr = self._extended_current_point
 
@@ -387,6 +415,17 @@ class PathCommand:
         """Set the relative values of the points."""
         self._rel_vals = vals
         self._abs_vals = []
+        self._abs_strs = []
+
+    @property
+    def rel_strs(self) -> list[str]:
+        """Get the relative values of the points as strings.
+
+        :return: the relative values of the points as strings
+        """
+        if not self._rel_strs:
+            self._rel_strs = [self._format_number(x) for x in self.rel_vals]
+        return self._rel_strs
 
     @property
     def str_cmd(self) -> str:
@@ -394,7 +433,7 @@ class PathCommand:
 
         :return: the SVG command (e.g. "M", "L", "Q", "C", "V", "H", ...)
         """
-        return _get_shorthand_command(self, self.resolution)
+        return _get_shorthand_command(self)
 
     @property
     def cpts(self) -> list[tuple[float, float]]:
@@ -424,24 +463,26 @@ class PathCommand:
         :raises ValueError: if the relative_or_absolute value is unknown
         """
         if relative_or_absolute == RelativeOrAbsolute.ABSOLUTE:
-            vals = self.abs_vals
+            strs = self.abs_strs
         elif relative_or_absolute == RelativeOrAbsolute.RELATIVE:
-            vals = self.rel_vals
+            strs = self.rel_strs
         else:
             msg = f"Unknown relative_or_absolute value: {relative_or_absolute}"
             raise ValueError(msg)
 
-        if self.str_cmd == "Z":
+        str_cmd = self.str_cmd
+
+        if str_cmd == "Z":
             return
 
-        if self.str_cmd == "V":
-            yield self._format_number(vals[1])
-        elif self.str_cmd == "H":
-            yield self._format_number(vals[0])
-        elif self.str_cmd in "TS":
-            yield from map(self._format_number, vals[2:])
+        if str_cmd == "V":
+            yield strs[1]
+        elif str_cmd == "H":
+            yield strs[0]
+        elif str_cmd in "TS":
+            yield from strs[2:]
         else:
-            yield from map(self._format_number, vals)
+            yield from strs
 
         if self.does_close:  # path was closed with an arc or curve.
             yield "Z" if relative_or_absolute == RelativeOrAbsolute.ABSOLUTE else "z"
@@ -528,14 +569,14 @@ class PathCommands:
         :return: the first command in the linked list
         :raises ValueError: if the SVG data string contains arc commands
         """
-        parts = _svgd_split(svgd)  # e.g., ["M", "0", "0", "H", "1", "V", "2"]
+        parts = _svgd_split(svgd)[::-1]  # e.g., ["M", "0", "0", "H", "1", "V", "2"]
 
-        cmd_str = parts.pop(0)
+        cmd_str = parts.pop()
         node = PathCommand(cmd_str, _take_n_floats(parts, 2), resolution=resolution)
         cmd_str = {"m": "l", "M": "L"}[cmd_str]
         while parts:
-            if parts[0].lower() in _CMD_2_N:
-                cmd_str = parts.pop(0)
+            if parts[-1].lower() in _CMD_2_N:
+                cmd_str = parts.pop()
             num_args = _CMD_2_N[cmd_str.lower()]
             nums = list(_take_n_floats(parts, num_args))
             if cmd_str in "Zz":

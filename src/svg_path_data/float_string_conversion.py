@@ -95,16 +95,14 @@ def _split_float_str(
     return sign, integer, fraction, exponent
 
 
-def format_as_fixed_point(num: str | float, resolution: int | None = None) -> str:
-    """Format a number in fixed-point notation.
+def _format_split_as_fixed_point(split_str: tuple[str, str, str, int]) -> str:
+    """Format a split float string as fixed-point notation.
 
-    :param exp_str: A string representing a number in exponential notation
-        (e.g., '1.23e+03') or just a number.
-    :param resolution: optionally limit the smallest difference between two numbers
-        to (1/10**resolution).
+    :param split_str: A tuple containing the sign, integer part, fractional part,
+        and exponent of a float string.
     :return: A string representing the number in fixed-point notation.
     """
-    sign, integer, fraction, exponent = _split_float_str(num, resolution)
+    sign, integer, fraction, exponent = split_str
     if exponent > 0:
         fraction = fraction.ljust(exponent, "0")
         integer += fraction[:exponent]
@@ -118,16 +116,26 @@ def format_as_fixed_point(num: str | float, resolution: int | None = None) -> st
     return f"{sign}{integer}{fraction}" or "0"
 
 
-def format_as_exponential(num: str | float, resolution: int | None = None) -> str:
-    """Format a number in exponential notation.
+def format_as_fixed_point(num: str | float, resolution: int | None = None) -> str:
+    """Format a number in fixed-point notation.
 
-    :param num_str: A string representing a number in fixed-point notation
-        (e.g., '123000') or just a number.
+    :param exp_str: A string representing a number in exponential notation
+        (e.g., '1.23e+03') or just a number.
     :param resolution: optionally limit the smallest difference between two numbers
         to (1/10**resolution).
+    :return: A string representing the number in fixed-point notation.
+    """
+    return _format_split_as_fixed_point(_split_float_str(num, resolution))
+
+
+def _format_split_as_exponential(split_str: tuple[str, str, str, int]) -> str:
+    """Format a split float string as exponential notation.
+
+    :param split_str: A tuple containing the sign, integer part, fractional part,
+        and exponent of a float string.
     :return: A string representing the number in exponential notation.
     """
-    sign, integer, fraction, exponent = _split_float_str(num, resolution)
+    sign, integer, fraction, exponent = split_str
     if len(integer) > 1:
         exponent += len(integer) - 1
         fraction = (integer[1:] + fraction).rstrip("0")
@@ -141,6 +149,21 @@ def format_as_exponential(num: str | float, resolution: int | None = None) -> st
     fraction = "." + fraction if fraction else ""
     exp_str = f"e{exponent}" if exponent else ""
     return f"{sign}{integer}{fraction}{exp_str}" or "0"
+
+
+def format_as_exponential(num: str | float, resolution: int | None = None) -> str:
+    """Format a number in exponential notation.
+
+    :param num_str: A string representing a number in fixed-point notation
+        (e.g., '123000') or just a number.
+    :param resolution: optionally limit the smallest difference between two numbers
+        to (1/10**resolution).
+    :return: A string representing the number in exponential notation.
+    """
+    return _format_split_as_exponential(_split_float_str(num, resolution))
+
+
+_MIN_EXPONENTIAL_FLOAT_STRING_LENGTH = 3
 
 
 def format_number(num: float | str, resolution: int | None = None) -> str:
@@ -158,8 +181,11 @@ def format_number(num: float | str, resolution: int | None = None) -> str:
     * convert "-0" to "0"
     * use shorter of exponential or fixed-point notation
     """
-    exponential_str = format_as_exponential(num, resolution)
-    fixed_point_str = format_as_fixed_point(num, resolution)
+    split = _split_float_str(num, resolution)
+    fixed_point_str = _format_split_as_fixed_point(split)
+    if len(fixed_point_str) <= _MIN_EXPONENTIAL_FLOAT_STRING_LENGTH:
+        return fixed_point_str
+    exponential_str = _format_split_as_exponential(split)
     if len(exponential_str) < len(fixed_point_str):
         return exponential_str
     return fixed_point_str
