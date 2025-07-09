@@ -27,6 +27,14 @@ from svg_path_data.svg_data import (
 _T = TypeVar("_T")
 
 
+def test_multiple_ls_after_mid_m() -> None:
+    """Merge multiple L commands after a mid M command."""
+    svgd = "M1052 242H536L465 0H2L553 1466h494L1598 0H1124ZM957 559 795 1086 634 559Z"
+    cpts = get_cpts_from_svgd(svgd)
+    result = format_svgd_shortest(get_svgd_from_cpts(cpts))
+    assert_svgd_equal(result, svgd)
+
+
 def assert_svgd_equal(result: str, expect: str):
     """Assert result == expect and test helper functions.
 
@@ -37,11 +45,15 @@ def assert_svgd_equal(result: str, expect: str):
     assert get_svgd_from_cpts(get_cpts_from_svgd(expect)) == format_svgd_absolute(
         expect
     )
-    cpts = get_cpts_from_svgd(expect)
-    assert cpts == get_cpts_from_svgd(format_svgd_relative(expect))
-    assert format_svgd_relative(format_svgd_absolute(expect)) == format_svgd_relative(
-        expect
-    )
+
+    for fmt in (
+        format_svgd_absolute,
+        format_svgd_relative,
+        format_svgd_shortest,
+    ):
+        pre_loop = fmt(expect)
+        cpts = get_cpts_from_svgd(pre_loop)
+        assert fmt(get_svgd_from_cpts(cpts)) == pre_loop
 
     shortest = format_svgd_shortest(expect)
     relative = format_svgd_relative(expect)

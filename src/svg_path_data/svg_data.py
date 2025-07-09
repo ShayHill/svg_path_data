@@ -573,8 +573,8 @@ class PathCommands:
 
         cmd_str = parts.pop()
         node = PathCommand(cmd_str, _take_n_floats(parts, 2), resolution=resolution)
-        cmd_str = {"m": "l", "M": "L"}[cmd_str]
         while parts:
+            cmd_str = {"m": "l", "M": "L"}.get(cmd_str, cmd_str)
             if parts[-1].lower() in _CMD_2_N:
                 cmd_str = parts.pop()
             num_args = _CMD_2_N[cmd_str.lower()]
