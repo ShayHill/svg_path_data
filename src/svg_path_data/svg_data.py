@@ -1,16 +1,5 @@
 """Convert between control points and SVG path data.
 
-Splines in this library are represented as lists of, at a miminum, c0 continuous
-Bezier curves, with each curve represented as a list of control points.
-
-When starting from such a list, the svg data string representation will start with an
-"M" and perhaps end with a "Z" if the last point is the same as the first. When
-working from the other direction, SVG data strings are descriptions of (mostly)
-Bezier curves, but they are frequently *not* continuous. There may be several "M" and
-"Z" commands in one data string. If you convert this to control points, they may not
-function well at a spline, because evaluating the spline at a discontinuous point
-would have two possible values.
-
 The functions you may need:
 
 `get_svgd_from_cpts(cpts: Iterable[Sequence[Sequence[float]]]) -> str`
@@ -19,7 +8,7 @@ The functions you may need:
 `get_cpts_from_svgd(svgd: str) -> list[list[tuple[float, float]]`
     - Convert an SVG path data string to a list of lists of Bezier control points.
 
-`format_svge_absolute(svgd: str) -> str`
+`format_svgd_absolute(svgd: str) -> str`
     - Convert an SVG path data string to a relative one.
 
 `format_svgd_relative(svgd: str) -> str`
@@ -166,8 +155,6 @@ def _take_n_floats(parts: list[str], n: int) -> Iterable[float]:
 class PathCommand:
     """A command with points.
 
-    haracter-saving steps to create an SVG path data string.
-
     The str properties strip out unnecessary commands and points.
     """
 
@@ -183,6 +170,9 @@ class PathCommand:
         :param cmd: the SVG command (e.g. "M", "L", "Q", "C")
         :param vals: float after the svg command
         :param prev: the previous command in the linked list
+
+        Accepts any command known to SVG, "mMlLhHvVcCsSqQtTaAzZ", but will convert
+        all commands to "mMlLQqCcAa".
         """
         self.prev = prev
 
@@ -423,6 +413,7 @@ class PathCommand:
 
         :return: the relative values of the points as strings
         """
+        self._rel_strs = self._rel_strs or [self._format_number(x) for x in self.rel_vals]
         if not self._rel_strs:
             self._rel_strs = [self._format_number(x) for x in self.rel_vals]
         return self._rel_strs

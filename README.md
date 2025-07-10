@@ -43,7 +43,7 @@ format_number(-1/10e6, 6)
 
 `format_svgd_absolute` and `format_svgd_relative` will convert between absolute and relative path data strings and optimize\* existing path data strings.
 
-`format_svgd_shortest` (I almost named this one `format_svgd_readonly`) will, command by command, select the shorter of the absolute and readonly versions.
+`format_svgd_shortest` will, command by command, select the shorter of the absolute and readonly versions.
 
 ```python
 input = "M50,55C50,55 52 50 55 55Q0 2 2.5 2.5L2.5 0.5ZA1 1 1 1 1 54 44"
