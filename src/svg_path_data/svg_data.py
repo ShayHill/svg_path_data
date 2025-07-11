@@ -63,23 +63,6 @@ def _chunk_pairs(items: Sequence[_T]) -> Iterator[tuple[_T, _T]]:
         yield (items[i], items[i + 1])
 
 
-def _are_float_strings_equal(*vals: float | str, resolution: int | None) -> bool:
-    """Check if first half of the numbers are equal to the second half when printed.
-
-    :param numbers: values to compare
-    :return: True if all values are equal when printed, False otherwise
-    :raises ValueError: if the number of numbers is not even
-    """
-    vals_a = vals[: len(vals) // 2]
-    vals_b = vals[len(vals) // 2 :]
-    if len(vals_a) != len(vals_b):
-        msg = f"Expected an even number of values, got {len(vals)}."
-        raise ValueError(msg)
-    nos_a = (format_number(n, resolution) for n in vals_a)
-    nos_b = (format_number(n, resolution) for n in vals_b)
-    return all(a == b for a, b in zip(nos_a, nos_b))
-
-
 # Match an svg path data string command or number.
 _COMMAND_OR_NUMBER = re.compile(
     r"([MmZzLlHhVvCcSsQqTtAa])|(-?\d*\.?\d+(?:[eE][-+]?\d+)?)"
@@ -206,7 +189,7 @@ class PathCommand:
         if self.prev is not None:
             self.prev.next = self
             self.resolution = self.resolution or self.prev.resolution
-        po_x, po_y = map(self._format_number, self.path_open)
+        po_x, po_y = map(self.format_number, self.path_open)
         self.path_open_str = (po_x, po_y)
 
     def __repr__(self) -> str:
@@ -216,22 +199,13 @@ class PathCommand:
         """
         return f"Command('{self.cmd}', {self.abs_vals})"
 
-    def _format_number(self, number: float | str) -> str:
+    def format_number(self, number: float | str) -> str:
         """Format a number to a string with the correct precision.
 
         :param number: the number to format
         :return: the formatted number as a string
         """
         return format_number(number, self.resolution)
-
-    def nos_eq(self, *vals: float) -> bool:
-        """Check if the absolute values of this command are equal when printed.
-
-        :param vals: the values to compare
-        :return: True if the absolute values are equal to the given values, False
-            otherwise
-        """
-        return _are_float_strings_equal(*vals, resolution=self.resolution)
 
     @property
     def _n(self) -> int:
@@ -344,7 +318,7 @@ class PathCommand:
 
         :return: the implied control point as a string
         """
-        x, y = map(self._format_number, self.implied_cpt)
+        x, y = map(self.format_number, self.implied_cpt)
         return x, y
 
     @property
@@ -379,7 +353,7 @@ class PathCommand:
         :return: the relative values of the points as strings
         """
         if not self._abs_strs:
-            self._abs_strs = [self._format_number(x) for x in self.abs_vals]
+            self._abs_strs = [self.format_number(x) for x in self.abs_vals]
         return self._abs_strs
 
     @property
@@ -413,9 +387,11 @@ class PathCommand:
 
         :return: the relative values of the points as strings
         """
-        self._rel_strs = self._rel_strs or [self._format_number(x) for x in self.rel_vals]
+        self._rel_strs = self._rel_strs or [
+            self.format_number(x) for x in self.rel_vals
+        ]
         if not self._rel_strs:
-            self._rel_strs = [self._format_number(x) for x in self.rel_vals]
+            self._rel_strs = [self.format_number(x) for x in self.rel_vals]
         return self._rel_strs
 
     @property
@@ -538,17 +514,22 @@ class PathCommands:
         :return: an instance of PathCommands linked list
         :raises ValueError: if no commands can be created from the control points
         """
-        cpts_ = [[(x, y) for x, y in c] for c in cpts if c]
-        if not cpts_:
+        formatted_cpts = [[(x, y) for x, y in c] for c in cpts if c]
+        if not formatted_cpts:
             msg = "No control points provided to create commands."
             raise ValueError(msg)
 
-        node = PathCommand("M", cpts_[0][0], resolution=resolution)
-        for curve in cpts_:
-            vals = list(it.chain.from_iterable(curve))
-            if not node.nos_eq(*node.abs_vals[-2:], *curve[0]):
-                node = PathCommand("M", vals[:2], node)
-            node = PathCommand(None, vals[2:], node)
+        node = PathCommand("M", formatted_cpts[0][0], resolution=resolution)
+        for curve in formatted_cpts:
+            curve_0_strs = map(node.format_number, curve[0])
+            is_disjoint = (  # try to short circuit before any string conversions
+                node.prev
+                and any(a != b for a, b in zip(node.abs_vals[-2:], curve[0]))
+                and any(a != b for a, b in zip(node.abs_strs[-2:], curve_0_strs))
+            )
+            if is_disjoint:
+                node = PathCommand("M", curve[0], node)
+            node = PathCommand(None, it.chain(*curve[1:]), node)
 
         return cls(node)
 

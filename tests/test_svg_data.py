@@ -14,7 +14,6 @@ from paragraphs import par
 from svg_path_data.svg_data import (
     PathCommand,
     PathCommands,
-    _are_float_strings_equal,
     _svgd_join,
     _svgd_split,
     format_svgd_absolute,
@@ -81,11 +80,6 @@ class TestCptsWithMidClose:
         assert_svgd_equal(result, expect)
 
 
-def test_nums_print_equal():
-    """Raise a ValueError if number of arguments is not equal."""
-    with pytest.raises(ValueError):
-        _ = _are_float_strings_equal(1, 2, 3, resolution=None)
-
 
 def test_no_leading_zero():
     """Correctly split numbers without leading zeros."""
@@ -147,10 +141,10 @@ def test_consecutive_l_at_start():
 
 
 class TestResolution:
-    """Test that resolution is used in _are_float_strings_equal."""
+    """Test that resolution is used in finding disjoint segments."""
 
     def test_resolution_from_cpts(self):
-        """Test that resolution is used in _are_float_strings_equal."""
+        """Test that resolution is used when generating SVG data from cpts."""
         cpts = [
             [(1 / 3, 2 / 3), (3 / 3, 4 / 3)],
             [(3 / 3, 4 / 3 + 1 / 1000), (5 / 3, 4 / 3 + 2 / 10000)],
