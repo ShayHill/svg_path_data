@@ -24,10 +24,11 @@ The functions you may need:
 from __future__ import annotations
 
 import enum
+import functools as ft
 import itertools as it
 import re
 from string import ascii_lowercase
-from typing import TYPE_CHECKING, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from svg_path_data.float_string_conversion import format_number
 
@@ -46,6 +47,16 @@ class RelativeOrAbsolute(str, enum.Enum):
     RELATIVE = "relative"
     ABSOLUTE = "absolute"
     SHORTEST = "shortest"
+
+
+def _comp_iterables(a_iter: Iterable[Any], b_iter: Iterable[Any]) -> bool:
+    """Compare two iterables for equality.
+
+    :param a_iter: first iterable
+    :param b_iter: second iterable
+    :return: True if the iterables are equal, False otherwise
+    """
+    return all(a == b for a, b in it.zip_longest(a_iter, b_iter, fillvalue=None))
 
 
 def _chunk_pairs(items: Sequence[_T]) -> Iterator[tuple[_T, _T]]:
@@ -93,30 +104,12 @@ def _svgd_join(*parts: str) -> str:
     return re.sub(r"\s*([A-Za-z])\s*", r"\1", joined)
 
 
-def _get_shorthand_command(cmd: PathCommand) -> str:
-    """If a path command can be shortened, return the shorthand SVG command.
-
-    :param cmd: the command to check
-    :return: the input cmd.cmd or a shorthand replacement ("H", "V", "T", "S", "Z")
-    """
-    if cmd.cmd in "QC" and tuple(cmd.abs_strs[:2]) == cmd.implied_cpt_str:
-        return "T" if cmd.cmd == "Q" else "S"
-    if cmd.cmd == "L":
-        if cmd.does_close:
-            return "Z"
-        eq_x = cmd.abs_strs[0] == cmd.current_point_str[0]
-        eq_y = cmd.abs_strs[1] == cmd.current_point_str[1]
-        if eq_x:
-            return "V"
-        if eq_y:
-            return "H"
-    return cmd.cmd
-
-
-# what is the degree of each basic command?
+# What is the degree of each basic command? For selecting a command in
+# PathCommand.__init__
 _N_2_CMD = {2: "L", 4: "Q", 6: "C"}
 
-# how many floats does each command take?
+# How many floats does each command take? For popping floats from a split SVG path
+# datastring.
 # fmt: off
 _CMD_2_N = {
     "a": 7, "c": 6, "h": 1, "l": 2, "m": 2,
@@ -126,7 +119,7 @@ _CMD_2_N = {
 
 
 def _take_n_floats(parts: list[str], n: int) -> Iterable[float]:
-    """Pop the first n floats from a list of strings.
+    """Pop n floats from a list of strings.
 
     :param parts: a list of strings
     :param n: the number of floats to pop
@@ -157,40 +150,47 @@ class PathCommand:
         Accepts any command known to SVG, "mMlLhHvVcCsSqQtTaAzZ", but will convert
         all commands to "mMlLQqCcAa".
         """
-        self.prev = prev
-
-        self._rel_vals: list[float] = []
-        self._abs_vals: list[float] = []
+        self.__rel_vals: list[float] = []
+        self.__abs_vals: list[float] = []
+        self.__rel_strs: list[str] = []
+        self.__abs_strs: list[str] = []
 
         if cmd and cmd[0] in ascii_lowercase:
-            self.rel_vals = list(vals)
+            self.__rel_vals = list(vals)
             self.cmd = cmd.upper()
         else:
-            self.abs_vals = list(vals)
+            self.__abs_vals = list(vals)
             self.cmd = cmd or _N_2_CMD[self._n]
 
-        self._abs_strs: list[str] = []
-        self._rel_strs: list[str] = []
+        # update values inherited from the previous command
+        self.prev = prev
+        self.next: PathCommand | None = None
+
+        if prev:
+            prev.next = self
+            self.resolution = resolution or prev.resolution
+            self._current_point = prev.abs_vals[-2], prev.abs_vals[-1]
+            self._current_point_str = prev.abs_strs[-2], prev.abs_strs[-1]
+        else:
+            self.resolution = resolution
+            self._current_point = 0.0, 0.0
+            self._current_point_str = "0", "0"
 
         # expand shorthand
         if self.cmd in "TS":
-            self.abs_vals = [*self.implied_cpt, *self.abs_vals]
+            self.__abs_vals = [*self._implied_cpt, *self.abs_vals]
+            self.__rel_vals = []
             self.cmd = {"T": "Q", "S": "C"}[self.cmd]
         if self.cmd == "V":
-            self.rel_vals = [0.0, *self.rel_vals]
+            self.__abs_vals = [self._current_point[0], *self.abs_vals]
+            self.__rel_vals = []
             self.cmd = "L"
         if self.cmd == "H":
-            self.rel_vals = [*self.rel_vals, 0.0]
+            self.__abs_vals = [*self.abs_vals, self._current_point[1]]
+            self.__rel_vals = []
             self.cmd = "L"
 
         self.path_open = self._get_path_open()
-        self.next: PathCommand | None = None
-        self.resolution = resolution
-        if self.prev is not None:
-            self.prev.next = self
-            self.resolution = self.resolution or self.prev.resolution
-        po_x, po_y = map(self.format_number, self.path_open)
-        self.path_open_str = (po_x, po_y)
 
     def __repr__(self) -> str:
         """Get the SVG command and points for this command.
@@ -213,15 +213,15 @@ class PathCommand:
 
         :return: the degree of the command
         """
-        return max(len(self._abs_vals), len(self._rel_vals))
+        return max(len(self.__abs_vals), len(self.__rel_vals))
 
     def _get_path_open(self) -> tuple[float, float]:
         """Get the x and y coordinates of the last movement command.
 
         :return: a tuple of the x and y coordinates of the first point
 
-        This is used to determine when a command closes a path so an explicit "Z"
-        command and can be guaranteed.
+        This is used to determine when a command closes a path so a closing L can
+        become a Z or a closing curve will be followed by an explicit Z.
         """
         if self.cmd in "mM":
             x, y = self.abs_vals[:2]
@@ -239,112 +239,69 @@ class PathCommand:
         """
         if self.cmd == "M":
             return False
-        return tuple(self.abs_strs[-2:]) == self.path_open_str
-
-    @property
-    def current_point(self) -> tuple[float, float]:
-        """Get the x and y coordinates of the last point in the previous command.
-
-        :return: a tuple of the x and y coordinates of the last point in the previous
-            command
-
-        This is the absolute point to which all relative commands in self are relative.
-        """
-        if self.prev is None:
-            return 0.0, 0.0
-        return self.prev.abs_vals[-2], self.prev.abs_vals[-1]
-
-    @property
-    def current_point_str(self) -> tuple[str, str]:
-        """Get the current point as a tuple of formatted float strings.
-
-        :return: a tuple of the x and y coordinates of the last point in the previous
-            command as strings
-        """
-        if self.prev is None:
-            return "0", "0"
-        return self.prev.abs_strs[-2], self.prev.abs_strs[-1]
+        return _comp_iterables(self.abs_vals[-2:], self.path_open)
 
     @property
     def _extended_current_point(self) -> Iterator[float]:
         """Extend the current point over all values in the command.
 
         :return: a tuple of the x and y coordinates of the last point in the previous
-            command, extended to the current command's degree
+            command, extended to the current command's degree. This is used to
+            convert between absolute and relative coordinates.
         """
         if self.cmd == "A":
-            yield from (0, 0, 0, 0, 0, *self.current_point)
+            yield from (0, 0, 0, 0, 0, *self._current_point)
         elif self.cmd == "V":
-            yield self.current_point[1]
+            yield self._current_point[1]
         else:
-            yield from it.islice(it.cycle(self.current_point), self._n)
+            yield from it.islice(it.cycle(self._current_point), self._n)
 
     @property
-    def tangent(self) -> tuple[float, float]:
-        """Get the tangent vector of the last point in the previous command.
-
-        :return: a tuple of the x and y coordinates of the tangent vector
-        """
-        if self.prev and self._n >= _N_LINEAR:
-            return (
-                self.abs_vals[-2] - self.abs_vals[-4],
-                self.abs_vals[-1] - self.abs_vals[-3],
-            )
-        msg = "Cannot get tangent for command with less than 4 points."
-        raise ValueError(msg)
-
-    @property
-    def implied_cpt(self) -> tuple[float, float]:
+    def _implied_cpt(self) -> tuple[float, float]:
         """Get point that would be injected in a tTsS command.
 
         :return: a tuple of the x and y coordinates of the last control point of the
         previous curve projected through current point OR the current point if the
         commands are not adjacent curve commands with the same degree.
         """
-        adj_q = self.prev and self.prev.cmd in "QT" and self.cmd in "QT"
-        adj_c = self.prev and self.prev.cmd in "CS" and self.cmd in "CS"
-        if (adj_q or adj_c) and self.prev:
-            tan_x, tan_y = self.prev.tangent
-            cur_x, cur_y = self.current_point
+        if self.cmd not in "QTCS":
+            msg = "Request for implied control point on non-curve command."
+            raise AttributeError(msg)
+        if (
+            self.prev
+            and self.prev.cmd in "QTCS"
+            and (self.prev.cmd in "QT") == (self.cmd in "QT")
+        ):  # adjacent curve commands with the same degree
+            x0, y0, x1, y1 = self.prev.abs_vals[-4:]
+            tan_x, tan_y = x1 - x0, y1 - y0
+            cur_x, cur_y = self._current_point
             return cur_x + tan_x, cur_y + tan_y
-        if self.cmd in "QTCS":
-            return self.current_point
-        msg = "Request for implied control point on non-curve command."
-        raise ValueError(msg)
+        return self._current_point
 
-    @property
+    @ft.cached_property
     def implied_cpt_str(self) -> tuple[str, str]:
         """Get the implied control point as a string.
 
-        :return: the implied control point as a string
+        :return: the implied control point as a string. For comparison with Q or C
+        point strings to determine if a T or S shortcut command can be used.
         """
-        x, y = map(self.format_number, self.implied_cpt)
+        x, y = map(self.format_number, self._implied_cpt)
         return x, y
 
     @property
     def abs_vals(self) -> list[float]:
         """Get the absolute values of the points.
 
-        :return: the absolutr values of the points
+        :return: the absolute values of the points
+
+        At least one of a or r will ALWAYS be a float. The `or 0` is for the linter.
         """
-        if self._abs_vals:
-            return self._abs_vals
-        curr = self._extended_current_point
-
-        def iter_abs_vals() -> Iterator[float]:
-            """Iterate over the absolute values of the points."""
-            for r, a, c in it.zip_longest(self._rel_vals, self._abs_vals, curr):
-                yield a if a is not None else c + r
-
-        self._abs_vals = list(iter_abs_vals())
-        return self._abs_vals
-
-    @abs_vals.setter
-    def abs_vals(self, vals: list[float]) -> None:
-        """Set the absolute values of the points."""
-        self._abs_vals = vals
-        self._rel_vals = []
-        self._rel_strs = []
+        if self.__abs_vals:
+            return self.__abs_vals
+        self.__abs_vals = [
+            r + c for r, c in zip(self.__rel_vals, self._extended_current_point)
+        ]
+        return self.__abs_vals
 
     @property
     def abs_strs(self) -> list[str]:
@@ -352,55 +309,58 @@ class PathCommand:
 
         :return: the relative values of the points as strings
         """
-        if not self._abs_strs:
-            self._abs_strs = [self.format_number(x) for x in self.abs_vals]
-        return self._abs_strs
+        if self.__abs_strs:
+            return self.__abs_strs
+        self.__abs_strs = [self.format_number(x) for x in self.abs_vals]
+        return self.__abs_strs
 
     @property
-    def rel_vals(self) -> list[float]:
+    def _rel_vals(self) -> list[float]:
         """Get the relative values of the points.
 
         :return: the relative values of the points
         """
-        if self._rel_vals:
-            return self._rel_vals
-        curr = self._extended_current_point
-
-        def iter_rel_vals() -> Iterator[float]:
-            """Iterate over the relative values of the points."""
-            for r, a, c in it.zip_longest(self._rel_vals, self._abs_vals, curr):
-                yield r if r is not None else a - c
-
-        self._rel_vals = list(iter_rel_vals())
-        return self._rel_vals
-
-    @rel_vals.setter
-    def rel_vals(self, vals: list[float]) -> None:
-        """Set the relative values of the points."""
-        self._rel_vals = vals
-        self._abs_vals = []
-        self._abs_strs = []
+        if self.__rel_vals:
+            return self.__rel_vals
+        self.__rel_vals = [
+            a - c for a, c in zip(self.__abs_vals, self._extended_current_point)
+        ]
+        return self.__rel_vals
 
     @property
-    def rel_strs(self) -> list[str]:
+    def _rel_strs(self) -> list[str]:
         """Get the relative values of the points as strings.
 
         :return: the relative values of the points as strings
         """
-        self._rel_strs = self._rel_strs or [
-            self.format_number(x) for x in self.rel_vals
-        ]
-        if not self._rel_strs:
-            self._rel_strs = [self.format_number(x) for x in self.rel_vals]
-        return self._rel_strs
+        if self.__rel_strs:
+            return self.__rel_strs
+        self.__rel_strs = [self.format_number(x) for x in self._rel_vals]
+        return self.__rel_strs
 
-    @property
-    def str_cmd(self) -> str:
+    @ft.cached_property
+    def _str_cmd(self) -> str:
         """Get the SVG command for this command as it will be used in the SVG data.
 
         :return: the SVG command (e.g. "M", "L", "Q", "C", "V", "H", ...)
+
+        If a path command can be shortened, return the shorthand SVG command.
+
+        :param cmd: the command to check
+        :return: the input cmd.cmd or a shorthand replacement ("H", "V", "T", "S", "Z")
         """
-        return _get_shorthand_command(self)
+        if self.cmd in "QC" and _comp_iterables(
+            self.abs_strs[:2], self.implied_cpt_str
+        ):
+            return "T" if self.cmd == "Q" else "S"
+        if self.cmd == "L":
+            if self.does_close:
+                return "Z"
+            if self.abs_strs[0] == self._current_point_str[0]:
+                return "V"
+            if self.abs_strs[1] == self._current_point_str[1]:
+                return "H"
+        return self.cmd
 
     @property
     def cpts(self) -> list[tuple[float, float]]:
@@ -414,10 +374,10 @@ class PathCommand:
         if self.cmd == "A":
             msg = "Arc commands cannot be converted to Bezier control points."
             raise ValueError(msg)
-        vals = [*self.current_point, *self.abs_vals]
+        vals = [*self._current_point, *self.abs_vals]
         return list(_chunk_pairs(vals))
 
-    def iter_str_pts(
+    def _iter_str_pts(
         self,
         relative_or_absolute: Literal[
             RelativeOrAbsolute.RELATIVE, RelativeOrAbsolute.ABSOLUTE
@@ -432,21 +392,19 @@ class PathCommand:
         if relative_or_absolute == RelativeOrAbsolute.ABSOLUTE:
             strs = self.abs_strs
         elif relative_or_absolute == RelativeOrAbsolute.RELATIVE:
-            strs = self.rel_strs
+            strs = self._rel_strs
         else:
             msg = f"Unknown relative_or_absolute value: {relative_or_absolute}"
             raise ValueError(msg)
 
-        str_cmd = self.str_cmd
-
-        if str_cmd == "Z":
+        if self._str_cmd == "Z":
             return
 
-        if str_cmd == "V":
+        if self._str_cmd == "V":
             yield strs[1]
-        elif str_cmd == "H":
+        elif self._str_cmd == "H":
             yield strs[0]
-        elif str_cmd in "TS":
+        elif self._str_cmd in "TS":
             yield from strs[2:]
         else:
             yield from strs
@@ -461,18 +419,14 @@ class PathCommand:
         :return: the SVG command and points as a string
         """
         if relative_or_absolute == RelativeOrAbsolute.RELATIVE:
-            return _svgd_join(
-                self.str_cmd.lower(), *self.iter_str_pts(relative_or_absolute)
-            )
+            str_cmd = self._str_cmd.lower()
+            return _svgd_join(str_cmd, *self._iter_str_pts(relative_or_absolute))
         if relative_or_absolute == RelativeOrAbsolute.ABSOLUTE:
-            return _svgd_join(self.str_cmd, *self.iter_str_pts(relative_or_absolute))
+            str_cmd = self._str_cmd
+            return _svgd_join(str_cmd, *self._iter_str_pts(relative_or_absolute))
         if relative_or_absolute == RelativeOrAbsolute.SHORTEST:
-            relative = _svgd_join(
-                self.str_cmd.lower(), *self.iter_str_pts(RelativeOrAbsolute.RELATIVE)
-            )
-            absolute = _svgd_join(
-                self.str_cmd, *self.iter_str_pts(RelativeOrAbsolute.ABSOLUTE)
-            )
+            relative = self.get_svgd(relative_or_absolute.RELATIVE)
+            absolute = self.get_svgd(relative_or_absolute.ABSOLUTE)
         if len(relative) < len(absolute):
             return relative
         return absolute
@@ -524,8 +478,8 @@ class PathCommands:
             curve_0_strs = map(node.format_number, curve[0])
             is_disjoint = (  # try to short circuit before any string conversions
                 node.prev
-                and any(a != b for a, b in zip(node.abs_vals[-2:], curve[0]))
-                and any(a != b for a, b in zip(node.abs_strs[-2:], curve_0_strs))
+                and not _comp_iterables(node.abs_vals[-2:], curve[0])
+                and not _comp_iterables(node.abs_strs[-2:], curve_0_strs)
             )
             if is_disjoint:
                 node = PathCommand("M", curve[0], node)
@@ -551,15 +505,13 @@ class PathCommands:
                 cmd_str = parts.pop()
             num_args = _CMD_2_N[cmd_str.lower()]
             nums = list(_take_n_floats(parts, num_args))
-            if cmd_str in "Zz":
+            if cmd_str in "Zz":  # close with a line if not already closed
                 if node.does_close:
                     continue
                 node = PathCommand("L", node.path_open, node)
             else:
                 node = PathCommand(cmd_str, nums, node)
-        while node.prev is not None:
-            node = node.prev
-        return PathCommands(node)
+        return cls(node)
 
     def _get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
         """Get the SVG path data string for the commands in the linked list.

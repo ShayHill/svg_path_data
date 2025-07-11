@@ -80,7 +80,6 @@ class TestCptsWithMidClose:
         assert_svgd_equal(result, expect)
 
 
-
 def test_no_leading_zero():
     """Correctly split numbers without leading zeros."""
     expect = ["M", "0", ".0", "L", "-.2", "-.5", ".3", ".4"]
@@ -179,14 +178,6 @@ class TestBreakCommand:
         with pytest.raises(ValueError) as excinfo:
             _ = cmds.cpts
         assert "Arc commands cannot be converted" in str(excinfo.value)
-
-    def test_tangent_on_non_curve(self):
-        """Raise a ValueError if tangent is requested on a non-curve command."""
-        svgd = "M0 0 L1 1 T2 2"
-        cmds = PathCommands.from_svgd(svgd)
-        with pytest.raises(ValueError) as excinfo:
-            _ = cmds.head.tangent
-        assert "Cannot get tangent" in str(excinfo.value)
 
 
 class TestArcCommand:
