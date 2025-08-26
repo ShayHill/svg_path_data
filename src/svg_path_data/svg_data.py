@@ -30,6 +30,8 @@ import re
 from string import ascii_lowercase
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
+from paragraphs import par
+
 from svg_path_data.float_string_conversion import format_number
 
 if TYPE_CHECKING:
@@ -79,15 +81,73 @@ _COMMAND_OR_NUMBER = re.compile(
     r"([MmZzLlHhVvCcSsQqTtAa])|(-?\d*\.?\d+(?:[eE][-+]?\d+)?)"
 )
 
+# What is the degree of each basic command? For selecting a command in
+# PathCommand.__init__
+_N_2_CMD = {2: "L", 4: "Q", 6: "C"}
+
+# How many floats does each command take? For popping floats from a split SVG path
+# datastring.
+# fmt: off
+_CMD_2_N = {
+    "a": 7, "c": 6, "h": 1, "l": 2, "m": 2,
+    "q": 4, "s": 4, "t": 2, "v": 1, "z": 0
+}
+# fmt: on
+
+
+def _is_not_cmd(part: str) -> bool:
+    """Check if a part is an SVG command.
+
+    :param part: a part of an SVG path data string
+    :return: True if the part is an SVG command, False otherwise
+    """
+    return part.lower() not in _CMD_2_N
+
 
 def _svgd_split(svgd: str) -> list[str]:
-    """Split an svg data string into commands and numbers.
+    """Split an svg data string into commands and numbers. Validate the string.
 
     :param svgd: An svg path element d string
     :return: a list of all commands (single letters) and numbers
     """
     matches = _COMMAND_OR_NUMBER.findall(svgd)
-    return [x for y in matches for x in y if x]
+    unmatched = re.sub(_COMMAND_OR_NUMBER, "", svgd).strip()
+    if missed_content := re.findall(r"\d|\w", unmatched):
+        msg = par(
+            f"""Invalid svg path data string. Unrecognized content
+            {" ... ".join(missed_content)!r} in input."""
+        )
+        raise ValueError(msg)
+    parts = [x for y in matches for x in y if x]
+
+    # validate the parts
+    if not parts[0] in "Mm":
+        msg = par(
+            """Invalid svg path data string. SVG path data must start with a move
+            command (M or m)."""
+        )
+        raise ValueError(msg)
+    at_part = 0
+    while at_part < len(parts):
+        cmd = parts[at_part]
+        at_part += 1
+
+        needs_p = _CMD_2_N[cmd.lower()]
+        given_p = sum(1 for _ in it.takewhile(_is_not_cmd, parts[at_part:]))
+        if needs_p == 0 and given_p != 0:
+            msg = par(
+                f"""Invalid svg path data string. Command {cmd} takes 0 float
+                parameters, got {given_p}."""
+            )
+            raise ValueError(msg)
+        if needs_p and (given_p % needs_p != 0):
+            msg = par(
+                f"""Invalid svg path data string. Command {cmd} takes (some multiple
+                of) {needs_p} float parameters, got {given_p}."""
+            )
+            raise ValueError(msg)
+        at_part += given_p
+    return parts
 
 
 def _svgd_join(*parts: str) -> str:
@@ -102,20 +162,6 @@ def _svgd_join(*parts: str) -> str:
     joined = re.sub(r"\s+", " ", joined)
     joined = re.sub(r" -", "-", joined)
     return re.sub(r"\s*([A-Za-z])\s*", r"\1", joined)
-
-
-# What is the degree of each basic command? For selecting a command in
-# PathCommand.__init__
-_N_2_CMD = {2: "L", 4: "Q", 6: "C"}
-
-# How many floats does each command take? For popping floats from a split SVG path
-# datastring.
-# fmt: off
-_CMD_2_N = {
-    "a": 7, "c": 6, "h": 1, "l": 2, "m": 2,
-    "q": 4, "s": 4, "t": 2, "v": 1, "z": 0
-}
-# fmt: on
 
 
 def _take_n_floats(parts: list[str], n: int) -> Iterable[float]:

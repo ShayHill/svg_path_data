@@ -270,3 +270,34 @@ class TestPotraceOutput:
         iterations.append(format_svgd_relative(potrace_output))
         iterations.append(format_svgd_relative(iterations[-1]))
         assert iterations[0] == iterations[1]
+
+
+class TestValidateSvgd:
+
+    def test_params_after_z(self):
+        """Test that parameters after a Z command raise a ValueError."""
+        svgd = "M0 0L1 1Z1 1"
+        with pytest.raises(ValueError) as excinfo:
+            _ = PathCommands.from_svgd(svgd)
+        assert "Command Z takes 0" in str(excinfo.value)
+
+    def test_does_not_start_with_m(self):
+        """Test that a path not starting with M raises a ValueError."""
+        svgd = "L1 1"
+        with pytest.raises(ValueError) as excinfo:
+            _ = PathCommands.from_svgd(svgd)
+        assert "SVG path data must start with a move" in str(excinfo.value)
+
+    def test_wrong_number_of_params(self):
+        svgd = "M0 0L1"
+        with pytest.raises(ValueError) as excinfo:
+            _ = PathCommands.from_svgd(svgd)
+        assert "Command L takes (some multiple of) 2" in str(excinfo.value)
+
+    def test_junk_in_svgd(self):
+        """Raise a ValueError if missed text looks like potential content."""
+        svgd = "M0 0L1a 1b"
+        with pytest.raises(ValueError) as excinfo:
+            _ = PathCommands.from_svgd(svgd)
+        assert "Unrecognized content 'b' in input" in str(excinfo.value)
+
