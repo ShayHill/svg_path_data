@@ -306,6 +306,15 @@ class PathCommand:
         instance = cls(cmd, vals, prev, resolution)
         if prev is None:
             return instance
+        # If the previous command was closed by an (arguably unnecessary) Z, insert a
+        # move command to the current point.
+        if (
+            instance.cmd != "M"
+            and prev.get_svgd(RelativeOrAbsolute.ABSOLUTE)[-1] == "Z"
+        ):
+            prev = cls("m", [0, 0], prev, resolution)
+            instance = cls(cmd, vals, prev, resolution)
+
         if instance.cmd in "MA":
             return instance
         if (
