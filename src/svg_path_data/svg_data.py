@@ -119,9 +119,11 @@ def _svgd_split(svgd: str) -> list[str]:
         )
         raise ValueError(msg)
     parts = [x for y in matches for x in y if x]
+    if not parts:
+        return []
 
     # validate the parts
-    if not parts[0] in "Mm":
+    if parts[0] not in "Mm":
         msg = par(
             """Invalid svg path data string. SVG path data must start with a move
             command (M or m)."""
@@ -210,6 +212,8 @@ class PathCommand:
 
         # update values inherited from the previous command
         self.prev = prev
+        if self.cmd == "M" and prev and prev.cmd == "M":
+            self.prev = prev.prev  # skip redundant move commands
         self.next: PathCommand | None = None
 
         if prev:
@@ -217,6 +221,7 @@ class PathCommand:
             self.resolution = resolution or prev.resolution
             self._current_point = prev.abs_vals[-2], prev.abs_vals[-1]
             self._current_point_str = prev.abs_strs[-2], prev.abs_strs[-1]
+
         else:
             self.resolution = resolution
             self._current_point = 0.0, 0.0
@@ -237,6 +242,31 @@ class PathCommand:
             self.cmd = "L"
 
         self.path_open = self._get_path_open()
+
+    @classmethod
+    def append(
+        cls,
+        cmd: str | None,
+        vals: Iterable[float],
+        prev: PathCommand | None = None,
+        resolution: int | None = None,
+    ) -> PathCommand:
+        """Append a command to the CommandList linked list.
+
+        Init has several quality checks, but it does not have the remedy of skipping
+        a node. This method will create a candidate next node and potentially skip
+        it.
+        """
+        instance = cls(cmd, vals, prev, resolution)
+        if prev is None:
+            return instance
+        if instance.cmd in "MA":
+            return instance
+        if all(x == "0" for x in instance._rel_strs):
+            # zero-length command; remove it from the linked list
+            prev.next = instance.next
+            return prev
+        return instance
 
     def __repr__(self) -> str:
         """Get the SVG command and points for this command.
@@ -514,22 +544,20 @@ class PathCommands:
         :return: an instance of PathCommands linked list
         :raises ValueError: if no commands can be created from the control points
         """
+        if not cpts:
+            return cls(PathCommand("M", [0, 0], resolution=resolution))
         formatted_cpts = [[(x, y) for x, y in c] for c in cpts if c]
-        if not formatted_cpts:
-            msg = "No control points provided to create commands."
-            raise ValueError(msg)
 
-        node = PathCommand("M", formatted_cpts[0][0], resolution=resolution)
+        node = PathCommand.append("M", formatted_cpts[0][0], resolution=resolution)
         for curve in formatted_cpts:
             curve_0_strs = map(node.format_number, curve[0])
             is_disjoint = (  # try to short circuit before any string conversions
-                node.prev
-                and not _comp_iterables(node.abs_vals[-2:], curve[0])
+                not _comp_iterables(node.abs_vals[-2:], curve[0])
                 and not _comp_iterables(node.abs_strs[-2:], curve_0_strs)
             )
             if is_disjoint:
-                node = PathCommand("M", curve[0], node)
-            node = PathCommand(None, it.chain(*curve[1:]), node)
+                node = PathCommand.append("M", curve[0], node)
+            node = PathCommand.append(None, it.chain(*curve[1:]), node)
 
         return cls(node)
 
@@ -542,9 +570,13 @@ class PathCommands:
         :raises ValueError: if the SVG data string contains arc commands
         """
         parts = _svgd_split(svgd)[::-1]  # e.g., ["M", "0", "0", "H", "1", "V", "2"]
+        if not parts:
+            return cls(PathCommand("M", [0, 0], resolution=resolution))
 
         cmd_str = parts.pop()
-        node = PathCommand(cmd_str, _take_n_floats(parts, 2), resolution=resolution)
+        node = PathCommand.append(
+            cmd_str, _take_n_floats(parts, 2), resolution=resolution
+        )
         while parts:
             cmd_str = {"m": "l", "M": "L"}.get(cmd_str, cmd_str)
             if parts[-1].lower() in _CMD_2_N:
@@ -554,9 +586,9 @@ class PathCommands:
             if cmd_str in "Zz":  # close with a line if not already closed
                 if node.does_close:
                     continue
-                node = PathCommand("L", node.path_open, node)
+                node = PathCommand.append("L", node.path_open, node)
             else:
-                node = PathCommand(cmd_str, nums, node)
+                node = PathCommand.append(cmd_str, nums, node)
         return cls(node)
 
     def _get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
@@ -565,6 +597,8 @@ class PathCommands:
         :param relative_or_absolute: whether to return relative or absolute coordinates
         :return: an SVG path data string
         """
+        if all(x.cmd == "M" for x in self):
+            return ""
         bits: list[str] = []
         cmd_prev: str | None = None
         for cmd in self:

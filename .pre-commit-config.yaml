@@ -6,7 +6,7 @@ ci:
 repos:
 
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v5.0.0
+  rev: v6.0.0
   hooks:
     - id: check-added-large-files
     - id: check-ast
@@ -41,7 +41,7 @@ repos:
         # files: .pre-commit-config.yaml
 
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.16.1
+  rev: v1.17.1
   hooks:
   - id: mypy
     name: mypy
@@ -111,7 +111,7 @@ repos:
   # D213 multi line summary second line (incompatible with D212):
   # ISC003 Explicitly concatenated string should be implicitly concatenated
   # FLY Use f-string instead of ...
-  rev: 'v0.12.2'
+  rev: 'v0.12.10'
   hooks:
     - id: ruff
       exclude: "tests"
@@ -128,6 +128,6 @@ repos:
 
 # reads pyproject.toml for additional config
 - repo: https://github.com/RobertCraigie/pyright-python
-  rev: v1.1.402
+  rev: v1.1.404
   hooks:
     - id: pyright

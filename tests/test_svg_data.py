@@ -166,11 +166,6 @@ class TestBreakCommand:
         cmd = PathCommand("m", [0, 0])
         assert repr(cmd) == "Command('M', [0.0, 0.0])"
 
-    def test_empty_cpts(self):
-        """Test that an empty list of control points raises a ValueError."""
-        with pytest.raises(ValueError):
-            _ = PathCommands.from_cpts([])
-
     def test_arc_command(self):
         """Test that an arc command raises a ValueError."""
         svgd = "M0 0 A 1 1 0 0 1 1 1"
@@ -273,7 +268,6 @@ class TestPotraceOutput:
 
 
 class TestValidateSvgd:
-
     def test_params_after_z(self):
         """Test that parameters after a Z command raise a ValueError."""
         svgd = "M0 0L1 1Z1 1"
@@ -301,3 +295,51 @@ class TestValidateSvgd:
             _ = PathCommands.from_svgd(svgd)
         assert "Unrecognized content 'b' in input" in str(excinfo.value)
 
+
+class TestZeroLengthCurves:
+    """Skip zero-length curves when generating SVG data from cpts."""
+
+    def test_skip_zero_length_quadratic(self):
+        """Skip zero-length quadratic curves."""
+        cpts = [
+            [(0, 0), (1, 1), (2, 2)],  # Normal quadratic
+            [(2, 2), (2, 2), (2, 2)],  # Zero-length quadratic
+            [(2, 2), (3, 3), (4, 4)],  # Normal quadratic
+        ]
+        result = get_svgd_from_cpts(cpts)
+        assert result == "M0 0Q1 1 2 2T4 4"
+
+    def test_all_zeros(self):
+        """Skip all-zero-length curves."""
+        cpts = [
+            [(0, 0), (0, 0), (0, 0), (0, 0)],
+            [(0, 0), (0, 0), (0, 0), (0, 0)],
+        ]
+        result = get_svgd_from_cpts(cpts)
+        assert result == ""
+
+    def test_no_movement(self):
+        """Skip non-path even if there is a movement."""
+        cpts = [
+            [(1, 1), (1, 1), (1, 1), (1, 1)],
+            [(2, 2), (2, 2), (2, 2), (2, 2)],
+            [(3, 3), (3, 3), (3, 3), (3, 3)],
+        ]
+        result = get_svgd_from_cpts(cpts)
+        assert result == ""
+
+    def test_empty_svgd_to_cpts(self):
+        """An empty SVG data string results in an empty list of cpts."""
+        cpts = get_cpts_from_svgd("")
+        assert cpts == []
+
+    def test_empty_cpts_to_svgd(self):
+        """An empty list of cpts results in an empty SVG data string."""
+        svgd = get_svgd_from_cpts([])
+        assert svgd == ""
+
+
+cpts = [
+    [(0, 0), (0, 0), (0, 0), (0, 0)],  # Zero-length quadratic
+    [(0, 0), (0, 0), (0, 0), (0, 0)],  # Zero-length quadratic
+]
