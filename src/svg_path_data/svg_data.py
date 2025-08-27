@@ -28,7 +28,7 @@ import functools as ft
 import itertools as it
 import re
 from string import ascii_lowercase
-from typing import TYPE_CHECKING, Any, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar
 
 from paragraphs import par
 
@@ -176,6 +176,45 @@ def _take_n_floats(parts: list[str], n: int) -> Iterable[float]:
     return map(float, (parts.pop() for _ in range(n)))
 
 
+def _is_monotonic(seq: Sequence[float]) -> bool:
+    """Check if a list is monotonic (entirely non-increasing or non-decreasing)."""
+    increasing = decreasing = True
+    for left, right in zip(seq, seq[1:]):
+        if left > right:
+            decreasing = False
+        elif left < right:
+            increasing = False
+    return increasing or decreasing
+
+
+def _is_linear(
+    pts: list[tuple[float, float]], formatter: Callable[[str | float], str]
+) -> bool:
+    """Check if a set of points is linear.
+
+    :param pts: a list of tuples of the x and y coordinates of the points
+    :param formatter: a function to format numbers to strings. This effectively
+        rounds the results to provide an epsilon.
+    :return: True if the points are linear, False otherwise
+    """
+    if len(pts) < 3:
+        return True
+    xs = [float(formatter(x)) for x, _ in pts]
+    ys = [float(formatter(y)) for _, y in pts]
+    if not (_is_monotonic(xs) and _is_monotonic(ys)):
+        return False
+    vx = float(xs[-1]) - float(xs[0])
+    vy = float(ys[-1]) - float(ys[0])
+    if vx == 0 or vy == 0:
+        return True
+    for x, y in zip(xs[1:-1], ys[1:-1]):
+        xt = (float(x) - float(xs[0])) / vx
+        yt = (float(y) - float(ys[0])) / vy
+        if formatter(yt) != formatter(xt):
+            return False
+    return True
+
+
 class PathCommand:
     """A command with points.
 
@@ -241,6 +280,12 @@ class PathCommand:
             self.__rel_vals = []
             self.cmd = "L"
 
+        # identify linear curves
+        if self.cmd in "QC" and _is_linear(self.cpts, self.format_number):
+            self.cmd = "L"
+            self.__abs_vals = self.__abs_vals[-2:]
+            self.__rel_vals = []
+
         self.path_open = self._get_path_open()
 
     @classmethod
@@ -257,11 +302,19 @@ class PathCommand:
         a node. This method will create a candidate next node and potentially skip
         it.
         """
+        vals = tuple(vals)
         instance = cls(cmd, vals, prev, resolution)
         if prev is None:
             return instance
         if instance.cmd in "MA":
             return instance
+        if (
+            instance.cmd == "L"
+            and prev.cmd == "L"
+            and _is_linear([*prev.cpts, instance.cpts[1]], instance.format_number)
+        ):
+            # skip previous L command
+            return cls(cmd, vals, prev.prev, resolution)
         if all(x == "0" for x in instance._rel_strs):
             # zero-length command; remove it from the linked list
             prev.next = instance.next

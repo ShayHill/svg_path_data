@@ -75,7 +75,7 @@ class TestCptsWithMidClose:
             [(3, 9), (4, 9), (5, 9)],  # Another segment starting with M
             [(5, 9), (6, 9), (3, 9)],  # Close the path
         ]
-        expect = "m0 0q1 0 2 0t2 0-4 0zm0 5q1 0 2 0t2 0m-1 4q1 0 2 0t-2 0z"
+        expect = "m0 0h4q1 0-4 0zm0 5h4m-1 4h2q1 0-2 0z"
         result = format_svgd_relative(get_svgd_from_cpts(cpts))
         assert_svgd_equal(result, expect)
 
@@ -95,16 +95,16 @@ class TestNonAdjacentCurveShorthand:
     """Test that non-adjacent curves get shorthand for equal first two points."""
 
     def test_t(self):
-        """Test that non-adjacent curve shorthand commands are joined."""
-        svgd = "M1 2Q1 2 3 4z"
+        """Test that adjacent curve shorthand commands are joined."""
+        svgd = "M1 2Q1 2 4 4z"
         cmds = PathCommands.from_svgd(svgd)
-        assert_svgd_equal(cmds.abs_svgd, "M1 2T3 4Z")
+        assert_svgd_equal(cmds.abs_svgd, "M1 2 4 4Z")
 
     def test_s(self):
-        """Test that non-adjacent curve shorthand commands are not joined."""
-        svgd = "M1 2C1 2 3 4 3 4z"
+        """Test that adjacent curve shorthand commands are joined."""
+        svgd = "M1 2C1 2 3 4 4 3z"
         cmds = PathCommands.from_svgd(svgd)
-        assert_svgd_equal(cmds.abs_svgd, "M1 2S3 4 3 4Z")
+        assert_svgd_equal(cmds.abs_svgd, "M1 2S3 4 4 3Z")
 
 
 class TestCloseCurve:
@@ -134,9 +134,9 @@ class TestCloseCurve:
 
 def test_consecutive_l_at_start():
     """Test that consecutive L commands at the start of a path added to m."""
-    svgd = "M0 0L1 1L2 2"
+    svgd = "M0 0L1 2L2 1"
     cmds = PathCommands.from_svgd(svgd)
-    assert_svgd_equal(cmds.abs_svgd, "M0 0 1 1 2 2")
+    assert_svgd_equal(cmds.abs_svgd, "M0 0 1 2 2 1")
 
 
 class TestResolution:
@@ -307,7 +307,7 @@ class TestZeroLengthCurves:
             [(2, 2), (3, 3), (4, 4)],  # Normal quadratic
         ]
         result = get_svgd_from_cpts(cpts)
-        assert result == "M0 0Q1 1 2 2T4 4"
+        assert result == "M0 0 4 4"
 
     def test_all_zeros(self):
         """Skip all-zero-length curves."""
@@ -334,9 +334,25 @@ class TestZeroLengthCurves:
         assert cpts == []
 
     def test_empty_cpts_to_svgd(self):
-        """An empty list of cpts results in an empty SVG data string."""
+        """An empty list of cpts results in ty SVG data string."""
         svgd = get_svgd_from_cpts([])
         assert svgd == ""
+
+
+class TestLinearCurves:
+    """Test that linear curves are converted to L commands."""
+
+    def test_no_t_after_m(self):
+        """A T shortcut following a non-curve is a L command."""
+        svgd = "M0 0L1 0T2 0"
+        cmds = PathCommands.from_svgd(svgd)
+        assert_svgd_equal(cmds.abs_svgd, "M0 0H2")
+
+    def test_flatten_linear_curves(self):
+        """Convert linear curves to L commands."""
+        svgd = "M0 0Q1 1 2 2T4 4C5 5 6 6 7 7S9 9 10 10"
+        cmds = PathCommands.from_svgd(svgd)
+        assert_svgd_equal(cmds.abs_svgd, "M0 0 10 10")
 
 
 cpts = [
