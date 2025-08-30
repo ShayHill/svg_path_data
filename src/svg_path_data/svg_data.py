@@ -754,4 +754,4 @@ def get_svgd_from_cpts(
     :param cpts: a list of curves, each a list of xy control points
     :return: SVG path data string
     """
-    return PathCommands.from_cpts(cpts, resolution=resolution).abs_svgd
+    return PathCommands.from_cpts(cpts, resolution=resolution).svgd

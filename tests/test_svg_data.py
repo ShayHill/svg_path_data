@@ -41,7 +41,7 @@ def assert_svgd_equal(result: str, expect: str):
     """
     assert result == expect
     assert _svgd_join(*_svgd_split(expect)) == expect
-    assert get_svgd_from_cpts(get_cpts_from_svgd(expect)) == format_svgd_absolute(
+    assert get_svgd_from_cpts(get_cpts_from_svgd(expect)) == format_svgd_shortest(
         expect
     )
 
@@ -118,7 +118,7 @@ class TestCloseCurve:
             ((0.5, 2.5), (0.0, 2.0), (0.0, 1.0), (0.5, 0.5)),
         )
         svgd = get_svgd_from_cpts(cpts)
-        assert svgd == "M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 2.5 0 1 .5 .5Z"
+        assert svgd == "M.5 .5C1 0 2 0 2.5 .5s.5 1.5 0 2S1 3 .5 2.5 0 1 .5 .5Z"
 
     def test_mid_curve(self):
         """Explicitly close anywhere a curve ends at the the start of a path."""
@@ -129,7 +129,7 @@ class TestCloseCurve:
             ((0.5, 0.5), (1.0, 0.0), (2.0, 0.0), (2.5, 0.5)),
         )
         svgd = get_svgd_from_cpts(cpts)
-        assert svgd == "M.5 .5C1 0 2 0 2.5 .5S3 2 2.5 2.5 1 3 .5 .5ZC1 0 2 0 2.5 .5"
+        assert svgd == "M.5 .5C1 0 2 0 2.5 .5s.5 1.5 0 2S1 3 .5 .5Zm0 0C1 0 2 0 2.5 .5"
 
 
 def test_consecutive_l_at_start():
@@ -149,7 +149,7 @@ class TestResolution:
             [(3 / 3, 4 / 3 + 1 / 1000), (5 / 3, 4 / 3 + 2 / 10000)],
         ]
         assert_svgd_equal(
-            get_svgd_from_cpts(cpts, resolution=2), "M.33 .67 1 1.33H1.67"
+            get_svgd_from_cpts(cpts, resolution=2), "M.33 .67 1 1.33h.67"
         )
 
     def test_resolution_from_svgd(self):
