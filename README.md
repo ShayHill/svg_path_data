@@ -58,7 +58,7 @@ format_svgd_shortest(input, resolution=2)
 # M50 55s2-5 5 0Q0 2 2.5 2.5V.5Za1 1 1 1 1 4-11
 ```
 
-\* *Optimize* is subjective: `zZ` in svg is strictly shorthand for a `line` command back to the most recent `move` command, but it is a strong convention to explicitly close paths that are implicitly closed with a curve ... with a `zZ` command, which in the "closed by a curve" case is a zero-length line. All functions here add these explicit `zZ` commands.
+\* *Optimize* is subjective: `zZ` in svg is strictly shorthand for a `line` command back to the most recent `move` command, but it is a strong convention to explicitly close paths that are implicitly closed with a curve ... with a `zZ` command, which in the "closed by a curve" case is a zero-length line. All functions here add these explicit `zZ` commands. If the `Z` command is in the middle of a path, and additional `mM` command is needed afterward, adding another additional character. Also, each path in the "shortest" versions will always start with an `M`, even when `m` might save a character. This is so paths can be concatenated.
 
 ## convert svg path data strings
 

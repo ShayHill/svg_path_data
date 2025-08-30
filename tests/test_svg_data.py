@@ -28,11 +28,10 @@ _T = TypeVar("_T")
 
 def test_multiple_ls_after_mid_m() -> None:
     """Merge multiple L commands after a mid M command."""
-    svgd = "M1052 242H536L465 0H2L553 1466h494L1598 0H1124ZM957 559 795 1086 634 559Z"
+    svgd = "M1052 242H536L465 0H2L553 1466h494L1598 0H1124Zm-95 317-162 527L634 559Z"
     cpts = get_cpts_from_svgd(svgd)
     result = format_svgd_shortest(get_svgd_from_cpts(cpts))
     assert_svgd_equal(result, svgd)
-
 
 def assert_svgd_equal(result: str, expect: str):
     """Assert result == expect and test helper functions.

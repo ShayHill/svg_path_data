@@ -653,6 +653,29 @@ class PathCommands:
                 node = PathCommand.append(cmd_str, nums, node)
         return cls(node)
 
+    def _stack_cmd_group(
+        self,
+        cmds: Iterable[PathCommand],
+        switches: RelativeOrAbsolute | Iterable[RelativeOrAbsolute],
+    ) -> str:
+        """Stack a group of commands, skipping redundant command letters.
+
+        :param cmds: an iterable of commands with the same command letter
+        :return: an SVG path data string for the group of commands
+        """
+        if isinstance(switches, RelativeOrAbsolute):
+            switches = it.cycle([switches])
+        bits: list[str] = []
+        cmd_prev: str | None = None
+        for cmd, switch in zip(cmds, switches):
+            svgd = cmd.get_svgd(switch)
+            if svgd[0] == cmd_prev:
+                bits.append(svgd[1:])
+            else:
+                bits.append(svgd)
+            cmd_prev = {"M": "L", "m": "l"}.get(svgd[0], svgd[0])
+        return _svgd_join(*bits)
+
     def _get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
         """Get the SVG path data string for the commands in the linked list.
 
@@ -661,17 +684,22 @@ class PathCommands:
         """
         if all(x.cmd == "M" for x in self):
             return ""
-        bits: list[str] = []
-        cmd_prev: str | None = None
-        for cmd in self:
-            cmd_svgd = cmd.get_svgd(relative_or_absolute)
-            cmd_str, cmd_pts = cmd_svgd[0], cmd_svgd[1:]
-            if cmd_str == cmd_prev:
-                bits.append(cmd_pts)
-            else:
-                bits.append(cmd_svgd)
-            cmd_prev = {"M": "L", "m": "l"}.get(cmd_str, cmd_str)
-        return _svgd_join(*bits)
+        if relative_or_absolute != RelativeOrAbsolute.SHORTEST:
+            return self._stack_cmd_group(self, relative_or_absolute)
+
+        grouped_by_cmd = it.groupby(self, lambda x: {"M": "L"}.get(x.cmd, x.cmd))
+        stacks: list[str] = []
+        for i, (_, group) in enumerate(grouped_by_cmd):
+            group_ = list(group)
+            patterns = it.product(
+                [RelativeOrAbsolute.ABSOLUTE, RelativeOrAbsolute.RELATIVE],
+                repeat=len(group_),
+            )
+            candidates = (self._stack_cmd_group(group_, p) for p in patterns)
+            if i == 0:
+                candidates = (c for c in candidates if c[0] == "M")
+            stacks.append(min(candidates, key=len))
+        return _svgd_join(*stacks)
 
     @property
     def svgd(self) -> str:
