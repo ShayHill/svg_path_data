@@ -25,6 +25,13 @@ from svg_path_data.svg_data import (
 
 _T = TypeVar("_T")
 
+def test_always_start_with_M() -> None:
+    """Always start shortest with an `M` command, even where `m` is shorter."""
+    svgd = "m100000 100000l-1 1"
+    assert format_svgd_absolute(svgd) == "M1e5 1e5 99999 100001"
+    assert format_svgd_relative(svgd) == "m1e5 1e5-1 1"
+    assert format_svgd_shortest(svgd) == "M1e5 1e5l-1 1"
+
 
 def test_multiple_ls_after_mid_m() -> None:
     """Merge multiple L commands after a mid M command."""

@@ -42,6 +42,7 @@ _T = TypeVar("_T")
 # number of points in a linear command (L, H, V, Z)
 _N_LINEAR = 4
 
+_CMDS = "MmLlHhVvCcSsQqTtAaZz"
 
 class RelativeOrAbsolute(str, enum.Enum):
     """Enum to indicate whether a path is relative or absolute or a combination."""
@@ -152,6 +153,8 @@ def _svgd_split(svgd: str) -> list[str]:
     return parts
 
 
+
+
 def _svgd_join(*parts: str) -> str:
     """Join SVG path data parts.
 
@@ -160,7 +163,13 @@ def _svgd_join(*parts: str) -> str:
 
     Svg datastrings don't need a lot of whitespace.
     """
-    joined = " ".join(parts)
+    parts_ = re.split(f"([{_CMDS}])", " ".join(parts))
+    cmds = [x for x in enumerate(parts_) if x[1] and x[1] in _CMDS]
+    for before, after in zip(cmds, cmds[1:]):
+        before_cmd = {"m": "l", "M": "L"}.get(before[1], before[1])
+        if after[1] == before_cmd:
+            parts_[after[0]] = " "
+    joined = "".join(parts_)
     joined = re.sub(r"\s+", " ", joined)
     joined = re.sub(r" -", "-", joined)
     return re.sub(r"\s*([A-Za-z])\s*", r"\1", joined)
@@ -653,28 +662,40 @@ class PathCommands:
                 node = PathCommand.append(cmd_str, nums, node)
         return cls(node)
 
-    def _stack_cmd_group(
-        self,
-        cmds: Iterable[PathCommand],
-        switches: RelativeOrAbsolute | Iterable[RelativeOrAbsolute],
+    def _get_shortest(
+        self, candidates: list[str] | None = None, cmds: list[PathCommand] | None = None
     ) -> str:
-        """Stack a group of commands, skipping redundant command letters.
+        """Get the shortest SVG path data string for a group of commands.
 
+        :param candidates: potential candidates for the shortest SVG path data string
         :param cmds: an iterable of commands with the same command letter
         :return: an SVG path data string for the group of commands
         """
-        if isinstance(switches, RelativeOrAbsolute):
-            switches = it.cycle([switches])
-        bits: list[str] = []
-        cmd_prev: str | None = None
-        for cmd, switch in zip(cmds, switches):
-            svgd = cmd.get_svgd(switch)
-            if svgd[0] == cmd_prev:
-                bits.append(svgd[1:])
-            else:
-                bits.append(svgd)
-            cmd_prev = {"M": "L", "m": "l"}.get(svgd[0], svgd[0])
-        return _svgd_join(*bits)
+        if cmds is None:
+            cmds = list(self)
+        if not cmds:
+            return candidates[0] if candidates else ""
+        if candidates is None:
+            candidates = [cmds[0].get_svgd(RelativeOrAbsolute.ABSOLUTE)]
+            cmds = cmds[1:]
+
+        if not cmds:
+            return candidates[0]
+
+        next_abs = cmds[0].get_svgd(RelativeOrAbsolute.ABSOLUTE)
+        next_rel = cmds[0].get_svgd(RelativeOrAbsolute.RELATIVE)
+
+        next_round: list[str] = []
+        for candidate in candidates:
+            next_round.append(_svgd_join(candidate, next_abs))
+            next_round.append(_svgd_join(candidate, next_rel))
+
+        next_round = [min(next_round[::2], key=len), min(next_round[1::2], key=len)]
+        if len(next_round[0]) < len(next_round[1]):
+            next_round = [next_round[0]]
+        elif len(next_round[1]) < len(next_round[0]):
+            next_round = [next_round[1]]
+        return self._get_shortest(next_round, cmds[1:])
 
     def _get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
         """Get the SVG path data string for the commands in the linked list.
@@ -685,21 +706,9 @@ class PathCommands:
         if all(x.cmd == "M" for x in self):
             return ""
         if relative_or_absolute != RelativeOrAbsolute.SHORTEST:
-            return self._stack_cmd_group(self, relative_or_absolute)
+            return _svgd_join(*(x.get_svgd(relative_or_absolute) for x in self))
 
-        grouped_by_cmd = it.groupby(self, lambda x: {"M": "L"}.get(x.cmd, x.cmd))
-        stacks: list[str] = []
-        for i, (_, group) in enumerate(grouped_by_cmd):
-            group_ = list(group)
-            patterns = it.product(
-                [RelativeOrAbsolute.ABSOLUTE, RelativeOrAbsolute.RELATIVE],
-                repeat=len(group_),
-            )
-            candidates = (self._stack_cmd_group(group_, p) for p in patterns)
-            if i == 0:
-                candidates = (c for c in candidates if c[0] == "M")
-            stacks.append(min(candidates, key=len))
-        return _svgd_join(*stacks)
+        return self._get_shortest()
 
     @property
     def svgd(self) -> str:
