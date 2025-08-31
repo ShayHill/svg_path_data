@@ -44,6 +44,7 @@ _N_LINEAR = 4
 
 _CMDS = "MmLlHhVvCcSsQqTtAaZz"
 
+
 class RelativeOrAbsolute(str, enum.Enum):
     """Enum to indicate whether a path is relative or absolute or a combination."""
 
@@ -153,6 +154,41 @@ def _svgd_split(svgd: str) -> list[str]:
     return parts
 
 
+def get_prev_cmd(svgd: str) -> str | None:
+    """Get the previous command in an SVG path data string.
+
+    :param svgd: an SVG path data string
+    :return: the last command in the SVG path data string, or None if there are no
+        commands
+    """
+    for c in reversed(svgd):
+        if c in _CMDS:
+            return c
+    return None
+
+
+def _svgd_join_commands(*parts: str) -> str:
+    """Join SVG commands.
+
+    :param parts: full commands (e.g., "M0 0", "L1 1")
+    :return: joined SVG path data string
+    """
+    result = parts[0]
+
+    for addition in parts[1:]:
+        assert addition[0] in _CMDS
+        prev_cmd = get_prev_cmd(result)
+        prev_cmd = {"M": "L", "m": "l", None: None}.get(prev_cmd, prev_cmd)
+        if addition[0] != prev_cmd:
+            result += addition
+            continue
+        else:
+            addition = addition[1:]
+        if not addition:
+            continue
+        joint = _svgd_join(result[-1], addition[0])
+        result += joint[1:] + addition[1:]
+    return result
 
 
 def _svgd_join(*parts: str) -> str:
@@ -163,13 +199,7 @@ def _svgd_join(*parts: str) -> str:
 
     Svg datastrings don't need a lot of whitespace.
     """
-    parts_ = re.split(f"([{_CMDS}])", " ".join(parts))
-    cmds = [x for x in enumerate(parts_) if x[1] and x[1] in _CMDS]
-    for before, after in zip(cmds, cmds[1:]):
-        before_cmd = {"m": "l", "M": "L"}.get(before[1], before[1])
-        if after[1] == before_cmd:
-            parts_[after[0]] = " "
-    joined = "".join(parts_)
+    joined = " ".join(parts)
     joined = re.sub(r"\s+", " ", joined)
     joined = re.sub(r" -", "-", joined)
     return re.sub(r"\s*([A-Za-z])\s*", r"\1", joined)
@@ -687,8 +717,8 @@ class PathCommands:
 
         next_round: list[str] = []
         for candidate in candidates:
-            next_round.append(_svgd_join(candidate, next_abs))
-            next_round.append(_svgd_join(candidate, next_rel))
+            next_round.append(_svgd_join_commands(candidate, next_abs))
+            next_round.append(_svgd_join_commands(candidate, next_rel))
 
         next_round = [min(next_round[::2], key=len), min(next_round[1::2], key=len)]
         if len(next_round[0]) < len(next_round[1]):
@@ -706,7 +736,9 @@ class PathCommands:
         if all(x.cmd == "M" for x in self):
             return ""
         if relative_or_absolute != RelativeOrAbsolute.SHORTEST:
-            return _svgd_join(*(x.get_svgd(relative_or_absolute) for x in self))
+            return _svgd_join_commands(
+                *(x.get_svgd(relative_or_absolute) for x in self)
+            )
 
         return self._get_shortest()
 
