@@ -709,23 +709,21 @@ class PathCommands:
             candidates = [cmds[0].get_svgd(RelativeOrAbsolute.ABSOLUTE)]
             cmds = cmds[1:]
 
-        if not cmds:
-            return candidates[0]
+        for cmd in cmds:
+            next_abs = cmd.get_svgd(RelativeOrAbsolute.ABSOLUTE)
+            next_rel = cmd.get_svgd(RelativeOrAbsolute.RELATIVE)
+            next_round: list[str] = []
+            for candidate in candidates:
+                next_round.append(_svgd_join_commands(candidate, next_abs))
+                next_round.append(_svgd_join_commands(candidate, next_rel))
 
-        next_abs = cmds[0].get_svgd(RelativeOrAbsolute.ABSOLUTE)
-        next_rel = cmds[0].get_svgd(RelativeOrAbsolute.RELATIVE)
-
-        next_round: list[str] = []
-        for candidate in candidates:
-            next_round.append(_svgd_join_commands(candidate, next_abs))
-            next_round.append(_svgd_join_commands(candidate, next_rel))
-
-        next_round = [min(next_round[::2], key=len), min(next_round[1::2], key=len)]
-        if len(next_round[0]) < len(next_round[1]):
-            next_round = [next_round[0]]
-        elif len(next_round[1]) < len(next_round[0]):
-            next_round = [next_round[1]]
-        return self._get_shortest(next_round, cmds[1:])
+            next_round = [min(next_round[::2], key=len), min(next_round[1::2], key=len)]
+            if len(next_round[0]) < len(next_round[1]):
+                next_round = [next_round[0]]
+            elif len(next_round[1]) < len(next_round[0]):
+                next_round = [next_round[1]]
+            candidates = next_round
+        return candidates[0]
 
     def _get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
         """Get the SVG path data string for the commands in the linked list.
