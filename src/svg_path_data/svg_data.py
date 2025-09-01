@@ -26,13 +26,16 @@ from __future__ import annotations
 import enum
 import functools as ft
 import itertools as it
-import re
 from string import ascii_lowercase
 from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar
 
-from paragraphs import par
-
 from svg_path_data.float_string_conversion import format_number
+from svg_path_data.string_ops import (
+    get_shortest_svgd,
+    svgd_join,
+    svgd_join_commands,
+    svgd_split,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -41,8 +44,6 @@ _T = TypeVar("_T")
 
 # number of points in a linear command (L, H, V, Z)
 _N_LINEAR = 4
-
-_CMDS = "MmLlHhVvCcSsQqTtAaZz"
 
 
 class RelativeOrAbsolute(str, enum.Enum):
@@ -78,11 +79,6 @@ def _chunk_pairs(items: Sequence[_T]) -> Iterator[tuple[_T, _T]]:
         yield (items[i], items[i + 1])
 
 
-# Match an svg path data string command or number.
-_COMMAND_OR_NUMBER = re.compile(
-    r"([MmZzLlHhVvCcSsQqTtAa])|(-?\d*\.?\d+(?:[eE][-+]?\d+)?)"
-)
-
 # What is the degree of each basic command? For selecting a command in
 # PathCommand.__init__
 _N_2_CMD = {2: "L", 4: "Q", 6: "C"}
@@ -95,114 +91,6 @@ _CMD_2_N = {
     "q": 4, "s": 4, "t": 2, "v": 1, "z": 0
 }
 # fmt: on
-
-
-def _is_not_cmd(part: str) -> bool:
-    """Check if a part is an SVG command.
-
-    :param part: a part of an SVG path data string
-    :return: True if the part is an SVG command, False otherwise
-    """
-    return part.lower() not in _CMD_2_N
-
-
-def _svgd_split(svgd: str) -> list[str]:
-    """Split an svg data string into commands and numbers. Validate the string.
-
-    :param svgd: An svg path element d string
-    :return: a list of all commands (single letters) and numbers
-    """
-    matches = _COMMAND_OR_NUMBER.findall(svgd)
-    unmatched = re.sub(_COMMAND_OR_NUMBER, "", svgd).strip()
-    if missed_content := re.findall(r"\d|\w", unmatched):
-        msg = par(
-            f"""Invalid svg path data string. Unrecognized content
-            {" ... ".join(missed_content)!r} in input."""
-        )
-        raise ValueError(msg)
-    parts = [x for y in matches for x in y if x]
-    if not parts:
-        return []
-
-    # validate the parts
-    if parts[0] not in "Mm":
-        msg = par(
-            """Invalid svg path data string. SVG path data must start with a move
-            command (M or m)."""
-        )
-        raise ValueError(msg)
-    at_part = 0
-    while at_part < len(parts):
-        cmd = parts[at_part]
-        at_part += 1
-
-        needs_p = _CMD_2_N[cmd.lower()]
-        given_p = sum(1 for _ in it.takewhile(_is_not_cmd, parts[at_part:]))
-        if needs_p == 0 and given_p != 0:
-            msg = par(
-                f"""Invalid svg path data string. Command {cmd} takes 0 float
-                parameters, got {given_p}."""
-            )
-            raise ValueError(msg)
-        if needs_p and (given_p % needs_p != 0):
-            msg = par(
-                f"""Invalid svg path data string. Command {cmd} takes (some multiple
-                of) {needs_p} float parameters, got {given_p}."""
-            )
-            raise ValueError(msg)
-        at_part += given_p
-    return parts
-
-
-def get_prev_cmd(svgd: str) -> str | None:
-    """Get the previous command in an SVG path data string.
-
-    :param svgd: an SVG path data string
-    :return: the last command in the SVG path data string, or None if there are no
-        commands
-    """
-    for c in reversed(svgd):
-        if c in _CMDS:
-            return c
-    return None
-
-
-def _svgd_join_commands(*parts: str) -> str:
-    """Join SVG commands.
-
-    :param parts: full commands (e.g., "M0 0", "L1 1")
-    :return: joined SVG path data string
-    """
-    result = parts[0]
-
-    for addition in parts[1:]:
-        assert addition[0] in _CMDS
-        prev_cmd = get_prev_cmd(result)
-        prev_cmd = {"M": "L", "m": "l", None: None}.get(prev_cmd, prev_cmd)
-        if addition[0] != prev_cmd:
-            result += addition
-            continue
-        else:
-            addition = addition[1:]
-        if not addition:
-            continue
-        joint = _svgd_join(result[-1], addition[0])
-        result += joint[1:] + addition[1:]
-    return result
-
-
-def _svgd_join(*parts: str) -> str:
-    """Join SVG path data parts.
-
-    :param parts: parts of an SVG path data string
-    :return: joined SVG path data string
-
-    Svg datastrings don't need a lot of whitespace.
-    """
-    joined = " ".join(parts)
-    joined = re.sub(r"\s+", " ", joined)
-    joined = re.sub(r" -", "-", joined)
-    return re.sub(r"\s*([A-Za-z])\s*", r"\1", joined)
 
 
 def _take_n_floats(parts: list[str], n: int) -> Iterable[float]:
@@ -597,10 +485,10 @@ class PathCommand:
         """
         if relative_or_absolute == RelativeOrAbsolute.RELATIVE:
             str_cmd = self._str_cmd.lower()
-            return _svgd_join(str_cmd, *self._iter_str_pts(relative_or_absolute))
+            return svgd_join(str_cmd, *self._iter_str_pts(relative_or_absolute))
         if relative_or_absolute == RelativeOrAbsolute.ABSOLUTE:
             str_cmd = self._str_cmd
-            return _svgd_join(str_cmd, *self._iter_str_pts(relative_or_absolute))
+            return svgd_join(str_cmd, *self._iter_str_pts(relative_or_absolute))
         if relative_or_absolute == RelativeOrAbsolute.SHORTEST:
             relative = self.get_svgd(relative_or_absolute.RELATIVE)
             absolute = self.get_svgd(relative_or_absolute.ABSOLUTE)
@@ -670,7 +558,7 @@ class PathCommands:
         :return: the first command in the linked list
         :raises ValueError: if the SVG data string contains arc commands
         """
-        parts = _svgd_split(svgd)[::-1]  # e.g., ["M", "0", "0", "H", "1", "V", "2"]
+        parts = svgd_split(svgd)[::-1]  # e.g., ["M", "0", "0", "H", "1", "V", "2"]
         if not parts:
             return cls(PathCommand("M", [0, 0], resolution=resolution))
 
@@ -692,39 +580,6 @@ class PathCommands:
                 node = PathCommand.append(cmd_str, nums, node)
         return cls(node)
 
-    def _get_shortest(
-        self, candidates: list[str] | None = None, cmds: list[PathCommand] | None = None
-    ) -> str:
-        """Get the shortest SVG path data string for a group of commands.
-
-        :param candidates: potential candidates for the shortest SVG path data string
-        :param cmds: an iterable of commands with the same command letter
-        :return: an SVG path data string for the group of commands
-        """
-        if cmds is None:
-            cmds = list(self)
-        if not cmds:
-            return candidates[0] if candidates else ""
-        if candidates is None:
-            candidates = [cmds[0].get_svgd(RelativeOrAbsolute.ABSOLUTE)]
-            cmds = cmds[1:]
-
-        for cmd in cmds:
-            next_abs = cmd.get_svgd(RelativeOrAbsolute.ABSOLUTE)
-            next_rel = cmd.get_svgd(RelativeOrAbsolute.RELATIVE)
-            next_round: list[str] = []
-            for candidate in candidates:
-                next_round.append(_svgd_join_commands(candidate, next_abs))
-                next_round.append(_svgd_join_commands(candidate, next_rel))
-
-            next_round = [min(next_round[::2], key=len), min(next_round[1::2], key=len)]
-            if len(next_round[0]) < len(next_round[1]):
-                next_round = [next_round[0]]
-            elif len(next_round[1]) < len(next_round[0]):
-                next_round = [next_round[1]]
-            candidates = next_round
-        return candidates[0]
-
     def _get_svgd(self, relative_or_absolute: RelativeOrAbsolute) -> str:
         """Get the SVG path data string for the commands in the linked list.
 
@@ -734,11 +589,12 @@ class PathCommands:
         if all(x.cmd == "M" for x in self):
             return ""
         if relative_or_absolute != RelativeOrAbsolute.SHORTEST:
-            return _svgd_join_commands(
-                *(x.get_svgd(relative_or_absolute) for x in self)
-            )
+            return svgd_join_commands(*(x.get_svgd(relative_or_absolute) for x in self))
 
-        return self._get_shortest()
+        absolutes = [x.get_svgd(RelativeOrAbsolute.ABSOLUTE) for x in self]
+        skip_1st = it.islice(self, 1, None)
+        relatives = [None, *(x.get_svgd(RelativeOrAbsolute.RELATIVE) for x in skip_1st)]
+        return get_shortest_svgd(absolutes, relatives)
 
     @property
     def svgd(self) -> str:

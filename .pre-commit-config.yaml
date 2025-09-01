@@ -95,6 +95,8 @@ repos:
   # D213 multi line summary second line (incompatible with D212):
   # ISC003 Explicitly concatenated string should be implicitly concatenated
   # FLY Use f-string instead of ...
+  #
+  # PLR2004 Magic numbers should not be used
   rev: 'v0.12.10'
   hooks:
     - id: ruff
@@ -102,7 +104,7 @@ repos:
       args:
       - --target-version=py39
       - --select=ALL
-      - --ignore=COM812,D203,D213,ISC003,FLY
+      - --ignore=COM812,D203,D213,ISC003,FLY,PLR2004
       - --fix
       - --fixable=RUF022
     - id: ruff

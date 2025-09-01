@@ -11,11 +11,10 @@ from typing import TypeVar
 import pytest
 from paragraphs import par
 
+from svg_path_data.string_ops import svgd_join, svgd_split
 from svg_path_data.svg_data import (
     PathCommand,
     PathCommands,
-    _svgd_join,
-    _svgd_split,
     format_svgd_absolute,
     format_svgd_relative,
     format_svgd_shortest,
@@ -24,6 +23,7 @@ from svg_path_data.svg_data import (
 )
 
 _T = TypeVar("_T")
+
 
 def test_always_start_with_M() -> None:
     """Always start shortest with an `M` command, even where `m` is shorter."""
@@ -40,13 +40,14 @@ def test_multiple_ls_after_mid_m() -> None:
     result = format_svgd_shortest(get_svgd_from_cpts(cpts))
     assert_svgd_equal(result, svgd)
 
+
 def assert_svgd_equal(result: str, expect: str):
     """Assert result == expect and test helper functions.
 
     This is just a method for running bonus circular tests on other test data.
     """
     assert result == expect
-    assert _svgd_join(*_svgd_split(expect)) == expect
+    assert svgd_join(*svgd_split(expect)) == expect
     assert get_svgd_from_cpts(get_cpts_from_svgd(expect)) == format_svgd_shortest(
         expect
     )
@@ -89,12 +90,12 @@ class TestCptsWithMidClose:
 def test_no_leading_zero():
     """Correctly split numbers without leading zeros."""
     expect = ["M", "0", ".0", "L", "-.2", "-.5", ".3", ".4"]
-    assert _svgd_split("M0 .0L-.2-.5 .3 .4") == expect
+    assert svgd_split("M0 .0L-.2-.5 .3 .4") == expect
 
 
 def test_exponential_notation():
     """Correctly split numbers in exponential notation."""
-    assert _svgd_split("M1e-2 2E3 3.4e+5-1") == ["M", "1e-2", "2E3", "3.4e+5", "-1"]
+    assert svgd_split("M1e-2 2E3 3.4e+5-1") == ["M", "1e-2", "2E3", "3.4e+5", "-1"]
 
 
 class TestNonAdjacentCurveShorthand:
@@ -154,9 +155,7 @@ class TestResolution:
             [(1 / 3, 2 / 3), (3 / 3, 4 / 3)],
             [(3 / 3, 4 / 3 + 1 / 1000), (5 / 3, 4 / 3 + 2 / 10000)],
         ]
-        assert_svgd_equal(
-            get_svgd_from_cpts(cpts, resolution=2), "M.33 .67 1 1.33h.67"
-        )
+        assert_svgd_equal(get_svgd_from_cpts(cpts, resolution=2), "M.33 .67 1 1.33h.67")
 
     def test_resolution_from_svgd(self):
         svgd = "M.333333 .67L1 1.33H1.67"
