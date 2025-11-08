@@ -22,7 +22,6 @@ dev = [
     "coverage>=7.9.2",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
-    "tox>=4.27.0",
 ]
 
 
@@ -43,15 +42,6 @@ addopts = "--doctest-modules"
 pythonpath = ["tests"]
 log_cli = 1
 
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py{39,310,311,312,313}
-
-[testenv]
-deps = pytest
-commands = pytest
-"""
 
 [tool.ruff.lint.pydocstyle]
 convention = "pep257"
