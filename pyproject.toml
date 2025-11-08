@@ -1,6 +1,6 @@
 [project]
 name = "svg-path-data"
-version = "0.5.3"
+version = "0.6.0"
 description = "Convert floats to svg-readable strings. Convert between svg path `d` strings and non-rational Bézier control points."
 readme = "README.md"
 license = "MIT"
@@ -27,7 +27,7 @@ dev = [
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.5.3"
+version = "0.6.0"
 tag_format = "$version"
 major-version-zero = true
 version_files = ["pyproject.toml:^version"]
