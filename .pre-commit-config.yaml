@@ -41,7 +41,7 @@ repos:
         # files: .pre-commit-config.yaml
 
 - repo: https://github.com/asottile/pyupgrade
-  rev: v3.20.0
+  rev: v3.21.0
   hooks:
   - args:
     - --py39-plus
@@ -97,7 +97,7 @@ repos:
   # FLY Use f-string instead of ...
   #
   # PLR2004 Magic numbers should not be used
-  rev: 'v0.12.10'
+  rev: 'v0.14.4'
   hooks:
     - id: ruff
       exclude: "tests"
@@ -114,6 +114,6 @@ repos:
 
 # reads pyproject.toml for additional config
 - repo: https://github.com/RobertCraigie/pyright-python
-  rev: v1.1.404
+  rev: v1.1.407
   hooks:
     - id: pyright
