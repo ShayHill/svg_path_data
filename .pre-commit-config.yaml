@@ -44,7 +44,7 @@ repos:
   rev: v3.21.0
   hooks:
   - args:
-    - --py39-plus
+    - --py310-plus
     id: pyupgrade
 
 - repo: https://github.com/Lucas-C/pre-commit-hooks
@@ -102,7 +102,7 @@ repos:
     - id: ruff
       exclude: "tests"
       args:
-      - --target-version=py39
+      - --target-version=py310
       - --select=ALL
       - --ignore=COM812,D203,D213,ISC003,FLY,PLR2004
       - --fix

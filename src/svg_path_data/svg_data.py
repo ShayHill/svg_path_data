@@ -27,7 +27,7 @@ import enum
 import functools as ft
 import itertools as it
 from string import ascii_lowercase
-from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 
 from svg_path_data.float_string_conversion import format_number
 from svg_path_data.string_ops import (
@@ -38,7 +38,7 @@ from svg_path_data.string_ops import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Callable, Iterable, Iterator, Sequence
 
 _T = TypeVar("_T")
 
@@ -106,7 +106,7 @@ def _take_n_floats(parts: list[str], n: int) -> Iterable[float]:
 def _is_monotonic(seq: Sequence[float]) -> bool:
     """Check if a list is monotonic (entirely non-increasing or non-decreasing)."""
     increasing = decreasing = True
-    for left, right in zip(seq, seq[1:]):
+    for left, right in it.pairwise(seq):
         if left > right:
             decreasing = False
         elif left < right:
@@ -134,7 +134,7 @@ def _is_linear(
     vy = float(ys[-1]) - float(ys[0])
     if vx == 0 or vy == 0:
         return True
-    for x, y in zip(xs[1:-1], ys[1:-1]):
+    for x, y in zip(xs[1:-1], ys[1:-1], strict=True):
         xt = (float(x) - float(xs[0])) / vx
         yt = (float(y) - float(ys[0])) / vy
         if formatter(yt) != formatter(xt):
@@ -364,7 +364,8 @@ class PathCommand:
         if self.__abs_vals:
             return self.__abs_vals
         self.__abs_vals = [
-            r + c for r, c in zip(self.__rel_vals, self._extended_current_point)
+            r + c
+            for r, c in zip(self.__rel_vals, self._extended_current_point, strict=True)
         ]
         return self.__abs_vals
 
@@ -388,7 +389,8 @@ class PathCommand:
         if self.__rel_vals:
             return self.__rel_vals
         self.__rel_vals = [
-            a - c for a, c in zip(self.__abs_vals, self._extended_current_point)
+            a - c
+            for a, c in zip(self.__abs_vals, self._extended_current_point, strict=True)
         ]
         return self.__rel_vals
 

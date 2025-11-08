@@ -7,7 +7,7 @@ license = "MIT"
 authors = [
     { name = "Shay", email = "shay_public@hotmail.com" }
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "paragraphs>=1.0.1",
 ]
@@ -51,7 +51,7 @@ convention = "pep257"
 include = ["src"]
 exclude = ["**/__pycache__.py"]
 
-pythonVersion = "3.9"
+pythonVersion = "3.10"
 pythonPlatform = "Any"
 
 typeCheckingMode = "strict"

@@ -191,7 +191,7 @@ class _ShortestPathCandidate:
         copies = [self.copy() for _ in additions[1:]]
         self.append(additions[0])
         yield self
-        for copy, addition in zip(copies, additions[1:]):
+        for copy, addition in zip(copies, additions[1:], strict=True):
             copy.append(addition)
             yield copy
 
@@ -205,7 +205,7 @@ def get_shortest_svgd(*formats: list[str] | list[str | None]) -> str:
     """
     candidates: list[_ShortestPathCandidate] = [_ShortestPathCandidate()]
 
-    for apps in zip(*formats):
+    for apps in zip(*formats, strict=True):
         apps_ = [a for a in apps if a is not None]
         candidates = list(it.chain(*(x.tee(*apps_) for x in candidates)))
         # The algorithm never backtracks, so we need only retain one candidate
