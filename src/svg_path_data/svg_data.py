@@ -322,6 +322,19 @@ class PathCommand:
             yield from it.islice(it.cycle(self._current_point), self._n)
 
     @property
+    def _extended_current_point_str(self) -> Iterator[str]:
+        """Extend the current point strings over all values in the command.
+
+        :return: a tuple of the x and y coordinates of the last point in the previous
+            command as strings, extended to the current command's degree. This is used
+            to convert between absolute and relative coordinates.
+        """
+        if self.cmd == "A":
+            yield from ("0", "0", "0", "0", "0", *self._current_point_str)
+        else:
+            yield from it.islice(it.cycle(self._current_point_str), self._n)
+
+    @property
     def _implied_cpt(self) -> tuple[float, float]:
         """Get point that would be injected in a tTsS command.
 
@@ -402,7 +415,15 @@ class PathCommand:
         """
         if self.__rel_strs:
             return self.__rel_strs
-        self.__rel_strs = [self.format_number(x) for x in self._rel_vals]
+        if self.prev is None:
+            self.__rel_strs = [self.format_number(x) for x in self.abs_vals]
+            return self.__rel_strs
+        self.__rel_strs = [
+            self.format_number(float(a) - float(c))
+            for a, c in zip(
+                self.abs_strs, self._extended_current_point_str, strict=True
+            )
+        ]
         return self.__rel_strs
 
     @ft.cached_property
